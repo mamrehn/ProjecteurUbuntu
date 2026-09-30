@@ -4,6 +4,12 @@ Get a **Logitech Spotlight** presenter working on **Ubuntu 26.04 LTS (GNOME, Way
 [Projecteur](https://github.com/gbin/Projecteur): the virtual laser pointer, the dimmed
 spotlight overlay, and the Next/Back buttons.
 
+> **About this repository.** It is a fork of [gbin/Projecteur](https://github.com/gbin/Projecteur) for
+> Ubuntu 26.04 / GNOME on Wayland (upstream's README: [README.upstream.md](README.upstream.md)).
+> Everything below sets up Ubuntu's *packaged* Projecteur 0.10, an interim solution **without zoom**.
+> The fork's own Qt6 + GNOME Shell version (live zoom, all features of the Windows app) is planned in
+> [doc/ubuntu/PLAN.md](doc/ubuntu/PLAN.md) and [doc/ubuntu/FEATURE-PARITY.md](doc/ubuntu/FEATURE-PARITY.md).
+
 ```bash
 git clone <this repo> && cd spotlight_presenter_on_ubuntu
 ./install.sh --autostart      # run as your normal user, not with sudo
