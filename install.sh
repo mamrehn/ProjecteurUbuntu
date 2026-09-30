@@ -261,7 +261,7 @@ run_checks() {
   if is_installed; then
     local scan
     scan=$(projecteur -d 2>&1 | grep -E 'Found [0-9]+ supported' || true)
-    if [[ $scan == *"Found 0"* || -z $scan ]]; then fail "No Spotlight receiver detected (plug it in)"
+    if [[ $scan == *"Found 0"* || -z $scan ]]; then fail "No Spotlight detected: plug in the USB receiver, or wake the remote and check its Bluetooth link"
     else ok "Device scan:${scan#*Found}"; fi
   fi
 
