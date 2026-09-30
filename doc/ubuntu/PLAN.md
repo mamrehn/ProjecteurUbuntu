@@ -1,7 +1,8 @@
 # Plan: Logitech Spotlight for Ubuntu 26.04 (GNOME 50, Wayland, Qt6)
 
-Status: **plan, nothing of it implemented yet** apart from the interim `install.sh` at the repository
-root. Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md).
+Status: **spike 1 done** (M0 harness + the overlay effects, verified in a headless shell only; see
+[Spike 1 results](#spike-1-results-2026-09-30)). Everything else is still plan. The interim `install.sh`
+at the repository root sets up Ubuntu's packaged Projecteur 0.10. Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md).
 
 ## Target
 
@@ -72,8 +73,8 @@ and **fractional scaling**, and be usable while sharing the **whole screen** in 
 
 | M | Deliverable | Acceptance |
 |---|---|---|
-| 0 | Build tooling; headless-shell test harness (boot shell, load extension, drive a virtual pointer, record the virtual monitor, assert pixels) | harness runs one trivial extension and reads back a frame |
-| 1 | Extension spike: circular live lens following the pointer; highlight; laser | pixel checks: lens shows magnified content, no recursion, click-through; CPU/fps measured |
+| 0 | **Done.** Headless-shell test harness `tests/headless/run.py` (isolated shell, drives the extension over D-Bus, screenshots the virtual monitor, asserts pixels). Build tooling for the Qt6 daemon is still missing (`cmake`, `ninja`, `pkg-config`, Qt6 dev packages). | 29 checks pass |
+| 1 | **Spike done in the headless shell**: round live lens, highlight, laser, D-Bus control, enable/disable. **Open:** try it in the real session, real windows/fullscreen apps, sizes calibrated to the Windows app, follow-the-device state machine. | pixel checks pass; see results below |
 | 2 | Daemon: KDE code removed, builds on Ubuntu 26.04 with Qt6, systemd user service, USB + Bluetooth detection, D-Bus API to the extension | device detected; extension receives activate/move/deactivate |
 | 3 | Buttons: hold-Next/Back actions, double-click cycling, freeze, re-center, cursor control | scripted device events → expected key events / effect state |
 | 4 | Prefs GUI for every applicable setting, per-app profiles | settings round-trip; profile switches with the focused window |
@@ -87,3 +88,39 @@ and **fractional scaling**, and be usable while sharing the **whole screen** in 
 * Whether to keep any KF6 dependency during the port or remove all of them at once – decide by a
   daemon-only build spike in M2.
 * Publishing: this fork is public on GitHub; the license (MIT, Jahn Fuchs) and attribution stay.
+
+## Spike 1 results (2026-09-30)
+
+Code: `gnome-shell/projecteur-overlay@mamrehn.github.io/` (extension) and `tests/headless/run.py` (harness).
+Everything ran in a throwaway `gnome-shell --headless` 1280x720 on the Intel iGPU, GNOME Shell 50.1, with its own
+D-Bus, GSettings and XDG directories. **29 of 29 checks pass:**
+
+| Claim | How it was checked |
+|---|---|
+| The lens is a *live* magnified view of the screen | pixels at five lens positions equal the checkerboard tile at half the offset (zoom 2), and differ from the un-magnified tile; zoom 3 also verified |
+| The lens is round | the corner of the lens square shows the plain screen, not magnified content |
+| No self-capture / lens-in-lens | lens content equals the plain pattern, at every sampled point |
+| Highlight dims by the contrast setting | outside the hole exactly 20 % of the original colour (contrast 80 %), inside unchanged |
+| Laser dot | centre pixel is the configured red |
+| Input passes through | `get_actor_at_pos(REACTIVE)` returns the background actor in all three modes |
+| Clean lifecycle | 5x disable/enable: D-Bus name follows, stage child count unchanged (6 before, 6 after), lens still correct afterwards |
+| Cost | shell CPU 0.7 % idle; 24.6 % of one core while moving the lens at about 96 updates/s (GPU time not included) |
+
+**Not verified:** the real session; real Wayland windows and fullscreen slideshows underneath; more than one
+monitor; fractional scaling; AMD and NVIDIA (only Intel was available); a 4K panel; the percentage-to-pixel
+size mapping (a placeholder, not calibrated against the Windows app).
+
+### Pitfalls found (each one cost a test run)
+
+1. **`Shell.GLSLEffect` uniforms before the first paint segfault the shell** (NULL pipeline in
+   `libmutter-cogl`). Call `get_uniform_location`/`set_uniform_float` only from `vfunc_paint_target`.
+2. The snippet hook enum is `Cogl.SnippetHook`, not `Shell.SnippetHook`, in GNOME 50.
+3. **Python's `Gio.bus_get_sync(SESSION)` ignores `DBUS_SESSION_BUS_ADDRESS` and connects to the real session
+   bus** (`/run/user/UID/bus`); GJS and `gdbus` honour the variable. The harness connects to the address
+   explicitly and refuses to run if the bus is the real one or not empty.
+4. GNOME 50's Screenshot D-Bus API only answers `org.gnome.SettingsDaemon.MediaKeys` and
+   `org.freedesktop.impl.portal.desktop.gnome`, unless `global.context.unsafe_mode` is set. Test builds set it
+   (only when `PROJECTEUR_OVERLAY_TESTING=1`).
+5. GNOME Shell writes `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions` while extensions are being enabled; if
+   the shell crashes then, the systemd unit disables extensions on restart. That is a useful safety net for
+   the real session, and the reason test shells get a private `XDG_RUNTIME_DIR`.

@@ -1,0 +1,8 @@
+{
+  "uuid": "projecteur-overlay@mamrehn.github.io",
+  "name": "Projecteur Overlay",
+  "description": "On-screen pointer effects (highlight, live magnifier, laser) for a Logitech Spotlight, driven over D-Bus by the projecteur daemon.",
+  "shell-version": ["50"],
+  "url": "https://github.com/mamrehn/ProjecteurUbuntu",
+  "version": 1
+}

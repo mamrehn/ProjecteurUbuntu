@@ -9,3 +9,5 @@ icons/icon-font/output/
 
 # Local reference material (Windows Logi Options+ screenshots), not part of the repository
 screenshots_*/
+__pycache__/
+*.pyc
