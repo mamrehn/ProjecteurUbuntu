@@ -58,25 +58,44 @@ works on this hardware.
 | 15 | Per-application profiles ("Add application") | separate settings per app | Ext (focused-window app id) + Daemon | absent |
 | 16 | Device info | firmware versions; "check for update" | Daemon (read-only) | firmware info reading present |
 
-## 3. Deliberately out of scope (unless you say otherwise)
+## 3. Out of scope (confirmed by the user, 2026-09-30)
 
 | Windows feature | Why |
 |---|---|
-| Cloud backup of device settings (needs a Logitech account) | replaced by a plain, exportable config file |
-| Firmware update | needs Logitech's update channel; nothing equivalent verified for Linux |
+| Cloud backup of device settings (needs a Logitech account) | out of scope; a plain, exportable config file is enough |
+| Firmware update | out of scope (firmware versions are still shown read-only) |
 | Feature tour, support link | Windows-app onboarding |
-| "Smart Actions" (automation chains in Options+) | undocumented in the screenshots; add only on request |
 | Effects visible in a *single-window* screen share | an overlay drawn by the compositor is not part of one window's pixels; the same is true on Windows. Whole-screen shares include it. |
 
-## 4. Behaviour the screenshots cannot answer (needs a Windows recording or a Windows test)
+**In scope, details pending:** "Smart Actions" (the collapsed *SMART ACTIONS* section under the
+hold-Next / hold-Back options). The screenshots do not show its contents; a screenshot of the expanded
+section is needed before it can be specified.
+
+## 4. Confirmed behaviour (stated by the user from the Windows app)
+
+These define the on-screen state machine (Highlight, Magnify and Laser all behave the same way):
+
+| Input | Result |
+|---|---|
+| **Hold** the action (top) button | the effect is shown and follows the *device's* movement |
+| **Release** the button (Freeze on) | the effect stays exactly where it was, as with an extremely steady hand |
+| Press and hold **again** | device movement moves the frozen effect again, from where it was |
+| **Short click** on the action button | the effect is hidden |
+| **Double-click** the action button | cycles the mode in the order of the settings page: **Highlight → Magnify → Laser → Highlight …** |
+
+Consequence for the design: the effect position is *state of the overlay*, moved by device deltas,
+not by the system mouse pointer. After a release the effect must stay put even if the mouse moves.
+
+Assumptions to confirm: with Freeze **off** the effect hides on release; the double-click cycle skips
+modes whose checkbox is off.
+
+## 5. Behaviour the screenshots cannot answer (needs a Windows recording or a Windows test)
 
 1. Magnify: zoom factor (not exposed as a setting) and what "80 %" of size refers to.
 2. Highlight: what exactly "contrast 80 %" means (dim level of the rest of the screen?) and what "size 43 %" is relative to (screen height?).
-3. Freeze: what ends a frozen effect (next button press, slide change, timeout)?
-4. Double-click cycle: order, and does it skip unchecked effects; which effect appears first.
-5. Re-center: which monitor is "the centre" on multi-monitor setups, and what triggers it exactly (Next/Back key presses?).
-6. Cursor control: what the buttons do while it is on.
-7. Fast forward / fast rewind: how many slides, how fast.
-8. Pointer speed 35 %: mapping to the device's HID++ setting.
-
-A short screen recording of each on Windows answers all eight.
+3. Re-center: which monitor is "the centre" on multi-monitor setups, and what triggers it exactly (Next/Back key presses?).
+4. Cursor control: what the buttons do while it is on.
+5. Fast forward / fast rewind: how many slides, how fast.
+6. Pointer speed 35 %: mapping to the device's HID++ setting.
+7. Where the effect first appears when nothing was shown before (screen centre? last position?).
+8. Smart Actions: see above.
