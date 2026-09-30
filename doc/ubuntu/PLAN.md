@@ -124,3 +124,20 @@ size mapping (a placeholder, not calibrated against the Windows app).
 5. GNOME Shell writes `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions` while extensions are being enabled; if
    the shell crashes then, the systemd unit disables extensions on restart. That is a useful safety net for
    the real session, and the reason test shells get a private `XDG_RUNTIME_DIR`.
+
+## M2 sizing: from upstream `develop` to a Qt6-only daemon (2026-09-30)
+
+* Installed for this: `cmake` 4.2.3, `ninja`, `pkg-config`, `qt6-base-dev`, `qt6-tools-dev`.
+* Upstream `develop` **cannot be built on Ubuntu 26.04 as it is**, not even with KDE installed: it requires
+  Plasma, KPipeWire and LayerShellQt **6.7**, Ubuntu 26.04 ships **6.6.x** (KF6 itself is 6.24, which is fine).
+* Each device-layer source file was syntax-checked against plain Qt6 (Core, DBus, Gui, Widgets). The only
+  blockers are of four kinds, none deep:
+  1. ECM-generated logging headers (`projecteur_hid_debug.h`, `…_device_…`, `…_input_…`, `…_virtual_device_…`),
+  2. `KLocalizedString` (`i18n()`),
+  3. the KConfigXT-generated `projecteurconfig.h` used by `settings.cc`,
+  4. the QtDBus-generated adaptor header used by `projecteurcontrol.cc`.
+
+  `presentationtimer.cc` and `device-command-helper.cc` already compile unchanged.
+* Consequence: the daemon target is the device layer plus small shims (Qt logging categories, `i18n` mapped to
+  `tr`), a generated D-Bus adaptor and a QSettings-based configuration instead of KConfigXT. No Widgets, Quick,
+  Wayland client, KF6, Plasma or KPipeWire.
