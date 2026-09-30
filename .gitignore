@@ -6,3 +6,6 @@ CMakeLists.txt.user*
 /build/*
 /release-assets/
 icons/icon-font/output/
+
+# Local reference material (Windows Logi Options+ screenshots), not part of the repository
+screenshots_*/
