@@ -24,6 +24,10 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 UUID = 'projecteur-overlay@mamrehn.github.io'
 EXT_SRC = REPO / 'gnome-shell' / UUID
 W, H, TILE = 1280, 720, 80
+# Mirrors CAL in overlay.js: values measured from the Windows screencast (see doc/ubuntu/FEATURE-PARITY.md)
+def diameter(size):          # highlight hole / lens diameter in px on this 720 px high monitor
+    return round(H * (0.102 + 0.686 * size))
+DIM_MULTIPLIER = 1 - 0.8875 * 0.80          # contrast 80 % -> screen drawn at 29 % brightness (Windows: 0.29-0.30)
 
 
 def outer():
@@ -222,20 +226,23 @@ def run_tests(h):
     inside, outside = (690, 390), (950, 470)
     h.check('inside the hole: pixels unchanged', close(s.px(*inside), tile_at(*inside), 3),
             f'got {s.px(*inside)} want {tile_at(*inside)}')
-    want = tuple(round(c * 0.2) for c in tile_at(*outside))
-    h.check('outside the hole: dimmed to 20 % (contrast 80 %)', close(s.px(*outside), want, 4),
+    want = tuple(round(c * DIM_MULTIPLIER) for c in tile_at(*outside))
+    h.check('outside the hole: dimmed to 29 % brightness (contrast 80 %, as measured on Windows)', close(s.px(*outside), want, 5),
             f'got {s.px(*outside)} want {want}')
 
     print('== laser')
     h.call('Show', 's', 'laser')
     h.call('MoveTo', 'dd', 300.0, 200.0)
     s = h.shot('laser')
-    h.check('laser dot centre is red', close(s.px(300, 200), (255, 32, 32), 6), f'got {s.px(300, 200)}')
+    h.check('laser dot core is saturated red', close(s.px(300, 200), (255, 0, 0), 12), f'got {s.px(300, 200)}')
     far = (340, 200)
     h.check('pixels away from the dot untouched', close(s.px(*far), tile_at(*far), 2))
 
     print('== live magnifier (zoom 2, centre 650,370)')
     cx, cy, z = 650, 370, 2
+    lens_d = diameter(0.80)
+    lens_r = lens_d / 2
+    print(f'      lens diameter {lens_d} px = {100 * lens_d / H:.1f} % of screen height (Windows: 65.1 %)')
     h.call('Show', 's', 'magnify')
     h.call('MoveTo', 'dd', float(cx), float(cy))
     s = h.shot('magnify')
@@ -250,11 +257,22 @@ def run_tests(h):
         assert want != wrong, f'point ({dx},{dy}) does not discriminate lens from no lens'
         h.check(f'lens offset ({dx:+d},{dy:+d}) shows the magnified source', close(got, want, 3) and not close(got, wrong, 3),
                 f'got {got} want {want} (unmagnified would be {wrong})')
-    corner = (cx + 140, cy + 140)
+    # hairlines along the centre axes were a real bug (CSS box-shadow seams): sample the axes themselves
+    axes_ok = True
+    for ax, ay in ((60, 0), (-60, 0), (0, 60), (0, -60), (150, 0), (0, 150)):
+        sx, sy = cx + ax / z, cy + ay / z
+        if tile_margin(sx, sy) < 4:
+            continue
+        axes_ok &= close(s.px(cx + ax, cy + ay), tile_at(sx, sy), 3)
+    h.check('no hairlines through the lens centre axes', axes_ok)
+    corner = (cx + round(0.75 * lens_r), cy + round(0.75 * lens_r))   # outside the circle, inside the square
+    assert (corner[0] - cx) ** 2 + (corner[1] - cy) ** 2 > lens_r ** 2
     h.check('lens corner outside the circle is cut away (not magnified)', close(s.px(*corner), tile_at(*corner), 3),
             f'got {s.px(*corner)} want {tile_at(*corner)}')
-    ring = s.px(cx + 149, cy)
-    h.check('ring drawn in the lens colour', close(ring, (32, 232, 176), 24), f'got {ring}')
+    ring = s.px(cx + round(lens_r) - 2, cy)
+    h.check('ring drawn in the lens colour (#00f8be)', close(ring, (0, 248, 190), 30), f'got {ring}')
+    outline = s.px(cx + round(lens_r) + 2, cy)
+    h.check('black outline outside the ring', close(outline, (0, 0, 0), 25), f'got {outline}')
 
     print('== no recursion / click-through')
     sx, sy = cx + 100 / z, cy + 20 / z
@@ -263,6 +281,15 @@ def run_tests(h):
         h.call('Show', 's', mode)
         picked = h.call('PickAt', 'dd', float(cx), float(cy))[0]
         h.check(f'{mode}: input passes through (nothing of ours is pickable)', 'projecteur' not in picked, f'picked "{picked}"')
+
+    print('== Windows behaviour: the effect appears at the mouse pointer')
+    px_, py_ = h.call('GetPointer')
+    h.call('Hide')
+    h.call('ShowAtPointer', 's', 'laser')
+    st = h.call('GetState')
+    h.check('ShowAtPointer shows the effect', st[0] is True and st[1] == 'laser', str(st))
+    h.check('...at the pointer position (clamped to the stage)', abs(st[2] - min(max(px_, 0), W)) < 1 and abs(st[3] - min(max(py_, 0), H)) < 1,
+            f'pointer ({px_:.0f},{py_:.0f}) state ({st[2]:.0f},{st[3]:.0f})')
 
     print('== freeze-style behaviour: moving and hiding')
     h.call('Show', 's', 'magnify')

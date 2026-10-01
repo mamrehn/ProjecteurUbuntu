@@ -11,6 +11,8 @@ const IFACE_XML = `
 <node>
   <interface name="org.projecteur.Overlay1">
     <method name="Show"><arg type="s" direction="in" name="mode"/></method>
+    <method name="ShowAtPointer"><arg type="s" direction="in" name="mode"/></method>
+    <method name="GetPointer"><arg type="d" direction="out" name="x"/><arg type="d" direction="out" name="y"/></method>
     <method name="Hide"/>
     <method name="SetMode"><arg type="s" direction="in" name="mode"/></method>
     <method name="MoveBy"><arg type="d" direction="in" name="dx"/><arg type="d" direction="in" name="dy"/></method>
@@ -54,6 +56,8 @@ export class OverlayService {
     }
 
     Show(mode) { this._overlay.show(mode); }
+    ShowAtPointer(mode) { this._overlay.showAtPointer(mode); }
+    GetPointer() { return this._overlay.pointer(); }
     Hide() { this._overlay.hide(); }
     SetMode(mode) { this._overlay.setMode(mode); }
     MoveBy(dx, dy) { this._overlay.moveBy(dx, dy); }

@@ -9,12 +9,25 @@ import {CircleMaskEffect} from './maskEffect.js';
 export const MODES = ['highlight', 'magnify', 'laser'];
 
 // Defaults are the values of the reference Windows configuration (see doc/ubuntu/FEATURE-PARITY.md).
-// The mapping from these percentages to pixels is a PLACEHOLDER until it is calibrated against the
-// Windows app.
+//
+// CALIBRATION. The mapping from the percentage settings to pixels was measured on a 1920x1080 screencast
+// of Logi Options+ with exactly these settings (one data point per effect, so the curves are HYPOTHESES):
+//   highlight size 43 % -> hole 429 px      magnify size 80 % -> lens 703 px (zoom 2.005 -> 2.0)
+//   two points fit  diameter / screen height = 0.102 + 0.686 * size   (shared by both effects)
+//   highlight contrast 80 % -> screen drawn at 29 % brightness  => black overlay alpha 0.71 (assumed linear)
+//   laser size 12 % -> saturated core about 22 px, soft glow about 40 px (assumed proportional to size)
+// More data points (other sizes/contrasts) are needed to confirm the curves.
 const DEFAULTS = {
     highlight: {contrast: 0.80, size: 0.43},
-    magnify: {size: 0.80, zoom: 2.0, color: '#20e8b0'},
-    laser: {size: 0.12, color: '#ff2020'},
+    magnify: {size: 0.80, zoom: 2.0, color: '#00f8be'},
+    laser: {size: 0.12, color: '#ff0000'},
+};
+export const CAL = {
+    sizeBase: 0.102, sizeSlope: 0.686,          // diameter / screen height = base + slope * size
+    dimAlphaPerContrast: 0.8875,                // overlay alpha = this * contrast (0.71 at 80 %)
+    laserCorePerSize: 22 / 0.12,                // px of saturated core per unit size
+    laserGlowFactor: 40 / 22,                   // whole dot / core
+    ringWidth: 4, ringOutline: 4,               // px, teal band and the black outline outside it
 };
 
 const TEST_TILE = 80;
@@ -69,6 +82,9 @@ export class Overlay {
         this._lens.add_child(this._clone);
         this._lensMask = new CircleMaskEffect(true);
         this._lens.add_effect(this._lensMask);
+        // Ring = black outline (outer) + teal band (inner), two plain bordered actors. Do NOT use CSS
+        // box-shadow for the outline: St's stretched shadow texture leaves a hairline cross through the lens.
+        this._outline = this._addOverlayActor(new St.Widget({name: 'projecteur-outline'}));
         this._ring = this._addOverlayActor(new St.Widget({name: 'projecteur-ring'}));
 
         // Laser: a plain round dot.
@@ -77,9 +93,9 @@ export class Overlay {
 
     destroy() {
         this.testPattern(false);
-        for (const a of [this._dim, this._lens, this._ring, this._dot])
+        for (const a of [this._dim, this._lens, this._outline, this._ring, this._dot])
             a?.destroy();
-        this._dim = this._lens = this._ring = this._dot = this._clone = null;
+        this._dim = this._lens = this._outline = this._ring = this._dot = this._clone = null;
     }
 
     // -- state --------------------------------------------------------------------------------
@@ -92,6 +108,18 @@ export class Overlay {
             this._mode = mode;
         this._visible = true;
         this._sync();
+    }
+
+    /** Windows behaviour: the effect appears at the mouse cursor, not where it was last hidden. */
+    showAtPointer(mode) {
+        const [x, y] = global.get_pointer();
+        this._x = this._clampX(x);
+        this._y = this._clampY(y);
+        this.show(mode);
+    }
+
+    pointer() {
+        return global.get_pointer();
     }
 
     hide() {
@@ -138,16 +166,16 @@ export class Overlay {
         return Main.layoutManager.findMonitorForPoint(this._x, this._y) ?? Main.layoutManager.primaryMonitor;
     }
 
-    // PLACEHOLDER pixel mapping, see DEFAULTS.
+    // Diameter in px of the highlight hole and of the lens (see CAL).
     _diameter(size) {
-        return Math.round(this._monitor().height * (0.10 + 0.40 * size));
+        return Math.round(this._monitor().height * (CAL.sizeBase + CAL.sizeSlope * size));
     }
 
     // -- rendering ----------------------------------------------------------------------------
     _sync() {
         const on = this._visible;
         this._dim.visible = on && this._mode === 'highlight';
-        this._lens.visible = this._ring.visible = on && this._mode === 'magnify';
+        this._lens.visible = this._outline.visible = this._ring.visible = on && this._mode === 'magnify';
         this._dot.visible = on && this._mode === 'laser';
         if (!on)
             return;
@@ -164,7 +192,7 @@ export class Overlay {
         const c = this._cfg.highlight;
         this._dim.set_position(m.x, m.y);
         this._dim.set_size(m.width, m.height);
-        this._dim.opacity = Math.round(255 * c.contrast);
+        this._dim.opacity = Math.round(255 * CAL.dimAlphaPerContrast * c.contrast);
         this._dimMask.setCircle([this._x - m.x, this._y - m.y], this._diameter(c.size) / 2, [m.width, m.height]);
     }
 
@@ -179,18 +207,24 @@ export class Overlay {
         this._clone.set_position(d / 2 - this._x * z, d / 2 - this._y * z);
         this._lensMask.setCircle([d / 2, d / 2], d / 2, [d, d]);
 
-        const ringWidth = 4;
         this._ring.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
         this._ring.set_size(d, d);
-        this._ring.style = `border: ${ringWidth}px solid ${c.color}; border-radius: ${d}px; box-shadow: 0 0 0 2px black;`;
+        this._ring.style = `border: ${CAL.ringWidth}px solid ${c.color}; border-radius: ${d}px;`;
+        const o = CAL.ringOutline, od = d + 2 * o;
+        this._outline.set_position(Math.round(this._x - od / 2), Math.round(this._y - od / 2));
+        this._outline.set_size(od, od);
+        this._outline.style = `border: ${o}px solid black; border-radius: ${od}px;`;
     }
 
     _syncLaser() {
         const c = this._cfg.laser;
-        const d = Math.round(6 + 34 * c.size);
+        const core = Math.max(4, Math.round(CAL.laserCorePerSize * c.size));
+        const d = Math.round(core * CAL.laserGlowFactor);
         this._dot.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
         this._dot.set_size(d, d);
-        this._dot.style = `background-color: ${c.color}; border-radius: ${d}px;`;
+        // solid core out to `core/d` of the radius, then fading to transparent
+        this._dot.style = `background-gradient-direction: radial; background-gradient-start: ${c.color}; ` +
+            `background-gradient-end: rgba(255,0,0,0); border-radius: ${d}px;`;
     }
 
     // -- test support (only reachable when the service exposes it) ------------------------------
