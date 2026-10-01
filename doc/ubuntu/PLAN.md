@@ -2,7 +2,7 @@
 
 Status: **spike 1 done** (M0 harness + the overlay effects, verified in a headless shell only; see
 [Spike 1 results](#spike-1-results-2026-09-30)). Everything else is still plan. The interim `install.sh`
-at the repository root sets up Ubuntu's packaged Projecteur 0.10. Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md).
+at the repository root sets up Ubuntu's packaged Projecteur 0.10. Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md). What the remote sends: [INPUT-MODEL.md](INPUT-MODEL.md).
 
 ## Target
 
