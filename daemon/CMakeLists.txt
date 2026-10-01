@@ -15,6 +15,7 @@ set(CMAKE_AUTOMOC ON)
 add_compile_options(-Wall -Wextra -Werror)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core DBus Test)
+find_package(Threads REQUIRED)
 
 # The logic of the pointer effects (hold / freeze / click / double click), free of any I/O.
 add_library(effectstate STATIC src/effectstate.cpp src/effectstate.h)
@@ -30,8 +31,26 @@ add_library(spotlightcore STATIC src/hidpplink.cpp src/hidpplink.h src/spotlight
 target_include_directories(spotlightcore PUBLIC src)
 target_link_libraries(spotlightcore PUBLIC hidpp Qt6::Core)
 
+# Everything around one connected remote: evdev nodes, virtual keyboard, overlay client, discovery.
+add_library(daemoncore STATIC
+  src/evdevdevice.cpp src/evdevdevice.h src/keysink.cpp src/keysink.h src/overlayclient.cpp src/overlayclient.h
+  src/remote.cpp src/remote.h src/discovery.cpp src/discovery.h)
+target_include_directories(daemoncore PUBLIC src)
+target_link_libraries(daemoncore PUBLIC spotlightcore effectstate Qt6::DBus)
+
+add_executable(projecteurd src/main.cpp)
+target_link_libraries(projecteurd PRIVATE daemoncore)
+
 enable_testing()
-add_executable(test_spotlightdevice tests/test_spotlightdevice.cpp)
+add_executable(test_remote tests/test_remote.cpp tests/fakeremote.h)
+target_link_libraries(test_remote PRIVATE daemoncore Qt6::Test)
+add_test(NAME remote COMMAND test_remote)
+
+add_executable(test_discovery tests/test_discovery.cpp)
+target_link_libraries(test_discovery PRIVATE daemoncore Qt6::Test)
+add_test(NAME discovery COMMAND test_discovery)
+
+add_executable(test_spotlightdevice tests/test_spotlightdevice.cpp tests/fakeremote.h)
 target_link_libraries(test_spotlightdevice PRIVATE spotlightcore Qt6::Test)
 add_test(NAME spotlightdevice COMMAND test_spotlightdevice)
 

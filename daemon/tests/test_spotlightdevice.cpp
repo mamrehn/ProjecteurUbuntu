@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include <QSignalSpy>
-#include <QSocketNotifier>
 #include <QtTest>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include "hidpp.h"
+#include "fakeremote.h"
 #include "hidpplink.h"
 #include "spotlightdevice.h"
 
@@ -15,41 +13,6 @@ using namespace projecteur::hidpp;
 namespace {
 
 QByteArray hex(const char* s) { return QByteArray::fromHex(s); }
-
-/// Plays the remote on the other end of a SOCK_SEQPACKET socket (which keeps message boundaries like hidraw).
-class FakeRemote : public QObject {
-  Q_OBJECT
- public:
-  explicit FakeRemote(int fd) : fd_(fd) {
-    notifier_ = new QSocketNotifier(fd_, QSocketNotifier::Read, this);
-    connect(notifier_, &QSocketNotifier::activated, this, &FakeRemote::onReadable);
-  }
-  ~FakeRemote() override { closeNow(); }
-  void closeNow() { if (fd_ >= 0) { ::close(fd_); fd_ = -1; } }
-  void notify(const QByteArray& m) { QVERIFY(::write(fd_, m.constData(), static_cast<size_t>(m.size())) == m.size()); }
-
-  int ignoreFirst = 0;           ///< a sleeping remote does not answer the first requests
-  QList<QByteArray> requests;    ///< everything received, answered or not
-
- private:
-  void onReadable() {
-    char buf[64];
-    const ssize_t n = ::read(fd_, buf, sizeof buf);
-    if (n <= 0) return;
-    const QByteArray m(buf, static_cast<qsizetype>(n));
-    requests.append(m);
-    if (ignoreFirst > 0) { --ignoreFirst; return; }
-    QByteArray reply = m;  // by default acknowledge by echoing, as the real remote does for set requests
-    if (static_cast<uint8_t>(m[2]) == 0x00) {  // IRoot.GetFeature(feature id) -> index
-      const int id = (static_cast<uint8_t>(m[4]) << 8) | static_cast<uint8_t>(m[5]);
-      reply = hex("1001000d000002");
-      reply[4] = static_cast<char>(id == 0x1b04 ? 0x07 : id == 0x1a00 ? 0x09 : 0x00);
-    }
-    QVERIFY(::write(fd_, reply.constData(), static_cast<size_t>(reply.size())) == reply.size());
-  }
-  int fd_;
-  QSocketNotifier* notifier_ = nullptr;
-};
 
 struct Rig {
   explicit Rig(SpotlightDevice::Config cfg = {}) {
