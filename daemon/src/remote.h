@@ -54,6 +54,8 @@ class Remote : public QObject {
   EvdevDevice* keyboard_ = nullptr;
   EvdevDevice* mouse_ = nullptr;
   bool announcedConnection_ = false;
+  int moveCount_ = 0;
+  long sumDx_ = 0, sumDy_ = 0;
   bool goneEmitted_ = false;
 };
 

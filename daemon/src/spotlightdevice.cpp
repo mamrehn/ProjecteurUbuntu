@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include "spotlightdevice.h"
 
+#include <QLoggingCategory>
+
 #include "hidpp.h"
+
+Q_LOGGING_CATEGORY(lcDevice, "projecteur.device")
 
 namespace projecteur {
 
@@ -87,7 +91,10 @@ void SpotlightDevice::vibrate(uint8_t length, uint8_t intensity) {
 
 void SpotlightDevice::onNotification(const QByteArray& message) {
   const auto event = decode(message, reprogIndex_);
-  if (!event) return;
+  if (!event) {
+    qCDebug(lcDevice).noquote() << "unhandled HID++ message:" << toHex(message);
+    return;
+  }
 
   if (const auto* buttons = std::get_if<ButtonsChanged>(&*event)) {
     const QSet<uint16_t> now(buttons->pressed.begin(), buttons->pressed.end());
