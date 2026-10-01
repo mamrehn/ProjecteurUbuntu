@@ -25,7 +25,16 @@ add_library(hidpp STATIC src/hidpp.cpp src/hidpp.h)
 target_include_directories(hidpp PUBLIC src)
 target_link_libraries(hidpp PUBLIC Qt6::Core)
 
+# The remote: HID++ link over a file descriptor, and the device handshake / button events on top of it.
+add_library(spotlightcore STATIC src/hidpplink.cpp src/hidpplink.h src/spotlightdevice.cpp src/spotlightdevice.h)
+target_include_directories(spotlightcore PUBLIC src)
+target_link_libraries(spotlightcore PUBLIC hidpp Qt6::Core)
+
 enable_testing()
+add_executable(test_spotlightdevice tests/test_spotlightdevice.cpp)
+target_link_libraries(test_spotlightdevice PRIVATE spotlightcore Qt6::Test)
+add_test(NAME spotlightdevice COMMAND test_spotlightdevice)
+
 add_executable(test_hidpp tests/test_hidpp.cpp)
 target_link_libraries(test_hidpp PRIVATE hidpp Qt6::Test)
 add_test(NAME hidpp COMMAND test_hidpp)
