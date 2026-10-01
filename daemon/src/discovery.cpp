@@ -91,8 +91,8 @@ SpotlightNodes findUsbReceiver() {
   return findUsbReceiver(QString::fromUtf8(f.readAll()));
 }
 
-RemoteWatcher::RemoteWatcher(KeySink* keys, OverlaySink* overlay, Remote::Options options, QObject* parent)
-    : QObject(parent), keys_(keys), overlay_(overlay), options_(options) {
+RemoteWatcher::RemoteWatcher(KeySink* keys, PointerSink* pointer, OverlaySink* overlay, Remote::Options options, QObject* parent)
+    : QObject(parent), keys_(keys), pointer_(pointer), overlay_(overlay), options_(options) {
   connect(&timer_, &QTimer::timeout, this, &RemoteWatcher::poll);
 }
 
@@ -120,15 +120,19 @@ void RemoteWatcher::poll() {
   qCInfo(lcDiscovery).noquote() << (nodes.bluetooth ? "Bluetooth Spotlight found:" : "Spotlight receiver found:") << nodes.hidraw
                                 << nodes.keyboard << nodes.mouse;
   Remote::Options options = options_;
+  options.bluetooth = nodes.bluetooth;
   if (nodes.bluetooth) {                 // directly connected: device index 0xff, the hidraw node takes 20 byte reports only
     options.device.deviceIndex = hidpp::kDirectDeviceIndex;
     options.device.longMessagesOnly = true;
   }
-  remote_ = new Remote({hidraw, keyboard, mouse}, keys_, overlay_, options, this);
+  remote_ = new Remote({hidraw, keyboard, mouse}, keys_, pointer_, overlay_, options, this);
+  emit remoteChanged(remote_);
   connect(remote_, &Remote::gone, this, [this] {
-    qCInfo(lcDiscovery) << "Spotlight receiver unplugged";
-    remote_->deleteLater();
+    qCInfo(lcDiscovery) << "Spotlight unplugged or out of range";
+    Remote* gone = remote_;
     remote_ = nullptr;
+    emit remoteChanged(nullptr);
+    gone->deleteLater();
   });
 }
 

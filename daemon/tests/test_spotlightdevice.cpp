@@ -48,6 +48,142 @@ class SpotlightDeviceTest : public QObject {
     QVERIFY(r.remote->requests.contains(getFeatureIndex(Feature::PresenterControl)));
     QVERIFY(r.remote->requests.contains(divertTo(kCidHold, 0x33)));        // hold with raw X/Y: pointer stays still
     QVERIFY(r.remote->requests.contains(divertTo(kCidDoubleClick, 0x03)));
+    QVERIFY(r.remote->requests.contains(divertTo(kCidNextHold, 0x33)));    // Next / Back held: with raw X/Y for volume, scrolling
+    QVERIFY(r.remote->requests.contains(divertTo(kCidBackHold, 0x33)));
+  }
+
+  void batteryAndFirmwareAreReadDuringTheHandshake() {
+    Rig r;
+    r.remote->batteryPercent = 63;
+    r.remote->batteryState = 0;
+    QSignalSpy battery(r.device, &SpotlightDevice::batteryChanged), info(r.device, &SpotlightDevice::infoChanged);
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QVERIFY(r.device->hasBattery());
+    QCOMPARE(r.device->battery().percent, 63);
+    QCOMPARE(r.device->battery().state, BatteryState::Discharging);
+    QCOMPARE(battery.count(), 1);
+    QCOMPARE(r.device->info().firmware, QStringLiteral("1.1.32"));  // what the Windows app shows for the measured unit
+    QCOMPARE(r.device->info().bootloader, QStringLiteral("26.1.15"));
+    QCOMPARE(info.count(), 1);
+  }
+
+  void aModelWithoutBatteryAndFirmwareFeaturesIsStillReady() {
+    Rig r;
+    r.remote->features.remove(0x1000);
+    r.remote->features.remove(0x0003);
+    r.remote->features.remove(0x2205);
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QVERIFY(!r.device->hasBattery());
+    QCOMPARE(r.device->battery().percent, -1);
+    QVERIFY(r.device->info().firmware.isEmpty());
+    r.device->setPointerSpeed(0x18);  // no such feature: nothing is sent
+    r.remote->requests.clear();
+    QTest::qWait(50);
+    QVERIFY(r.remote->requests.isEmpty());
+  }
+
+  void batteryLevelStepsAnnouncedByTheRemoteAreReported() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy battery(r.device, &SpotlightDevice::batteryChanged);
+    r.remote->notify(hex("11010600" "4b4b00" "0000000000000000000000"));   // 75 %
+    QTRY_COMPARE(battery.count(), 1);
+    QCOMPARE(battery.at(0).at(0).toInt(), 75);
+    r.remote->notify(hex("11010600" "4b4b00" "0000000000000000000000"));   // the same again: no new signal
+    r.remote->notify(hex("11010600" "644b01" "0000000000000000000000"));   // plugged in
+    QTRY_COMPARE(battery.count(), 2);
+    QCOMPARE(battery.at(1).at(1).value<BatteryState>(), BatteryState::Charging);
+  }
+
+  void theBatteryIsPolledAsASafetyNet() {
+    SpotlightDevice::Config cfg;
+    cfg.batteryPollMs = 40;
+    Rig r(cfg);
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy battery(r.device, &SpotlightDevice::batteryChanged);
+    r.remote->batteryPercent = 9;
+    QTRY_COMPARE(battery.count(), 1);
+    QCOMPARE(battery.at(0).at(0).toInt(), 9);
+  }
+
+  void nextAndBackHoldsAreSeparateFromTheActionButton() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy sideDown(r.device, &SpotlightDevice::sideHoldDown), sideUp(r.device, &SpotlightDevice::sideHoldUp),
+        sideMove(r.device, &SpotlightDevice::sideMove), actionMove(r.device, &SpotlightDevice::rawMove),
+        actionDown(r.device, &SpotlightDevice::holdDown);
+    r.remote->notify(hex("11010700" "00da" "000000000000"));                 // Next held
+    r.remote->notify(hex("11010710" "0000" "fff6" "00000000000000000000"));   // moved up by 10
+    r.remote->notify(hex("110107000000000000000000"));                      // released
+    r.remote->notify(hex("11010700" "00dc" "000000000000"));                 // Back held
+    r.remote->notify(hex("11010710" "0000" "0007" "00000000000000000000"));
+    r.remote->notify(hex("110107000000000000000000"));
+    QTRY_COMPARE(sideUp.count(), 2);
+    QCOMPARE(sideDown.count(), 2);
+    QCOMPARE(sideDown.at(0).at(0).value<Side>(), Side::Next);
+    QCOMPARE(sideDown.at(1).at(0).value<Side>(), Side::Back);
+    QCOMPARE(sideMove.count(), 2);
+    QCOMPARE(sideMove.at(0).at(0).value<Side>(), Side::Next);
+    QCOMPARE(sideMove.at(0).at(2).toInt(), -10);
+    QCOMPARE(sideMove.at(1).at(0).value<Side>(), Side::Back);
+    QCOMPARE(sideMove.at(1).at(2).toInt(), 7);
+    QCOMPARE(actionMove.count(), 0);   // not the action button
+    QCOMPARE(actionDown.count(), 0);
+  }
+
+  void movementWithNothingHeldIsDropped() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy any(r.device, &SpotlightDevice::rawMove), side(r.device, &SpotlightDevice::sideMove);
+    r.remote->notify(hex("11010710" "0003" "fffb" "00000000000000000000"));
+    QTest::qWait(60);
+    QCOMPARE(any.count(), 0);
+    QCOMPARE(side.count(), 0);
+  }
+
+  void switchingToCursorControlDivertsTheHoldWithoutRawMovement() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.device->setRawMovement(false);
+    QTRY_VERIFY(r.remote->requests.contains(divertTo(kCidHold, 0x03)));
+    r.remote->requests.clear();
+    r.device->setRawMovement(true);
+    QTRY_VERIFY(r.remote->requests.contains(divertTo(kCidHold, 0x33)));
+  }
+
+  void thePointerSpeedIsSetAndThePreviousLevelIsRestoredOnShutdown() {
+    Rig r;
+    r.remote->pointerSpeed = 0x12;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.device->setPointerSpeed(0x18);
+    QTRY_VERIFY(r.remote->requests.contains(setPointerSpeed(0x0a, 0x18)));
+    QTRY_VERIFY(r.remote->requests.contains(getPointerSpeed(0x0a)));   // read the original first
+    r.device->setPointerSpeed(0x30);   // out of range: clamped
+    QTRY_VERIFY(r.remote->requests.contains(setPointerSpeed(0x0a, 0x19)));
+    r.remote->requests.clear();
+    r.device->shutdown();
+    QTRY_VERIFY(r.remote->requests.contains(setPointerSpeed(0x0a, 0x12)));
+  }
+
+  void pointerSpeedIsLeftAloneWhenItWasNeverChanged() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.device->shutdown();
+    QTRY_VERIFY(r.remote->requests.size() >= 4);
+    QTest::qWait(30);
+    for (const QByteArray& m : std::as_const(r.remote->requests)) QVERIFY(static_cast<uint8_t>(m[2]) != 0x0a);
   }
 
   void overBluetoothEverythingIsALongMessageToDeviceIndexFF() {
@@ -84,7 +220,7 @@ class SpotlightDeviceTest : public QObject {
     r.remote->ignoreFirst = 3;  // the first three requests get no answer
     r.device->start();
     QVERIFY(r.becomesReady());
-    QCOMPARE(r.remote->requests.size(), 3 + 4);  // 3 unanswered, then 2 feature lookups + 2 diversions
+    QCOMPARE(r.remote->requests.size(), 3 + 14);  // 3 unanswered, then 5 lookups, 4 diversions, battery, 4 firmware reads
   }
 
   void buttonAndMovementNotificationsBecomeSignals() {
@@ -154,9 +290,11 @@ class SpotlightDeviceTest : public QObject {
     QVERIFY(r.becomesReady());
     r.remote->requests.clear();
     r.device->shutdown();
-    QTRY_COMPARE(r.remote->requests.size(), 2);
+    QTRY_COMPARE(r.remote->requests.size(), 4);
     QCOMPARE(r.remote->requests.at(0), divertTo(kCidHold, 0x22));
     QCOMPARE(r.remote->requests.at(1), divertTo(kCidDoubleClick, 0x22));
+    QCOMPARE(r.remote->requests.at(2), divertTo(kCidNextHold, 0x22));
+    QCOMPARE(r.remote->requests.at(3), divertTo(kCidBackHold, 0x22));
     QVERIFY(!r.device->isReady());
   }
 

@@ -15,18 +15,23 @@ Q_LOGGING_CATEGORY(lcRaw, "projecteur.raw", QtInfoMsg)
 
 namespace projecteur {
 
-Remote::Remote(Fds fds, KeySink* keys, OverlaySink* overlay, Options options, QObject* parent)
-    : QObject(parent), state_(options.effect), options_(options), keys_(keys), overlay_(overlay) {
+Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overlay, Options options, QObject* parent)
+    : QObject(parent), config_(options.config), state_(options.config.effectSettings()), options_(options), keys_(keys), overlay_(overlay) {
+  options_.device.rawMovement = !config_.cursorControl;
   link_ = new HidppLink(fds.hidraw, this);
   device_ = new SpotlightDevice(link_, options_.device, this);
   keyboard_ = new EvdevDevice(fds.keyboard, this);
   mouse_ = new EvdevDevice(fds.mouse, this);
+  actions_ = new HoldActions(keys, pointer, this);
+  haptics_ = new Haptics([this](uint8_t length, uint8_t intensity) { device_->vibrate(length, intensity); }, options_.pulseGapMs, this);
+  actions_->setConfig(config_);
+  haptics_->setIntensity(config_.vibrationIntensity());
 
   if (options_.grab) {
     // The Next / Back keys are re-sent through the virtual keyboard, a short press of the action button is a
     // plain mouse click that must not reach the application under the pointer.
     if (!keyboard_->grab(true)) qCWarning(lcRemote) << "cannot grab the remote's keyboard node; Next/Back reach the desktop directly";
-    if (!mouse_->grab(true)) qCWarning(lcRemote) << "cannot grab the remote's mouse node; a short click would click in the application";
+    if (!mouse_->grab(!config_.cursorControl)) qCWarning(lcRemote) << "cannot grab the remote's mouse node; a short click would click in the application";
   }
 
   connect(device_, &SpotlightDevice::holdDown, this, [this] {
@@ -47,18 +52,28 @@ Remote::Remote(Fds fds, KeySink* keys, OverlaySink* overlay, Options options, QO
     qCDebug(lcRemote) << "double click";
     run(state_.doubleClick());
   });
+  connect(device_, &SpotlightDevice::sideHoldDown, this, [this](Side s) { qCDebug(lcRemote) << (s == Side::Next ? "Next" : "Back") << "held"; actions_->down(s); });
+  connect(device_, &SpotlightDevice::sideHoldUp, this, [this](Side s) { qCDebug(lcRemote) << (s == Side::Next ? "Next" : "Back") << "released"; actions_->up(s); });
+  connect(device_, &SpotlightDevice::sideMove, this, [this](Side s, int dx, int dy) { qCDebug(lcRaw) << "side raw" << dx << dy; actions_->move(s, dx, dy); });
+  connect(actions_, &HoldActions::presentationStarted, this, &Remote::presentationStarted);
   connect(device_, &SpotlightDevice::problem, this, [](const QString& m) { qCWarning(lcRemote).noquote() << m; });
+  connect(device_, &SpotlightDevice::batteryChanged, this, &Remote::onBattery);
+  connect(device_, &SpotlightDevice::infoChanged, this, &Remote::statusChanged);
   connect(device_, &SpotlightDevice::readyChanged, this, [this](bool ready) {
     qCInfo(lcRemote) << (ready ? "remote ready" : "remote not ready");
-    if (ready && !announcedConnection_) {  // once per connection, not after every wake-up
-      announcedConnection_ = true;
-      device_->vibrate(options_.connectedPulseLength, options_.pulseIntensity);
+    if (ready) {
+      applyDeviceConfig();
+      if (!announcedConnection_) {  // once per connection, not after every wake-up
+        announcedConnection_ = true;
+        haptics_->connected();
+      }
     }
+    emit statusChanged();
   });
 
   connect(keyboard_, &EvdevDevice::key, this, &Remote::onKeyboardKey);
   connect(mouse_, &EvdevDevice::key, this, &Remote::onMouseKey);
-  // movement on the mouse node is swallowed: with the raw X/Y diverted the pointer must stay where it is
+  // movement on the mouse node is swallowed while it is grabbed: with the raw X/Y diverted the pointer must stay put
 
   const auto vanished = [this] {
     if (goneEmitted_) return;
@@ -76,11 +91,42 @@ Remote::~Remote() {
   if (device_) device_->shutdown();  // give the buttons back to the system
 }
 
+void Remote::setConfig(const Config& config) {
+  const bool cursorChanged = config.cursorControl != config_.cursorControl;
+  config_ = config;
+  Commands hide;
+  if (cursorChanged && state_.visible()) hide = state_.shortClick();   // an effect must not stay behind
+  state_.setSettings(config_.effectSettings());
+  actions_->setConfig(config_);
+  haptics_->setIntensity(config_.vibrationIntensity());
+  if (cursorChanged && options_.grab) mouse_->grab(!config_.cursorControl);
+  applyDeviceConfig();
+  run(hide);
+}
+
+void Remote::applyDeviceConfig() {
+  device_->setRawMovement(!config_.cursorControl);
+  if (config_.cursorControl) device_->setPointerSpeed(config_.pointerSpeedLevel());
+}
+
+void Remote::onBattery(int percent, hidpp::BatteryState state) {
+  qCInfo(lcRemote).noquote() << QStringLiteral("battery %1 % (%2)").arg(percent).arg(hidpp::batteryStateName(state));
+  const bool low = percent <= kBatteryLowPercent && !hidpp::isCharging(state);
+  if (low && !warnedLowBattery_ && config_.batteryWarning) {
+    warnedLowBattery_ = true;
+    haptics_->pulses(Haptics::kBatteryLowPulses);
+  } else if (!low && (percent > kBatteryLowPercent + 5 || hidpp::isCharging(state))) {
+    warnedLowBattery_ = false;   // recovered: warn again the next time
+  }
+  emit statusChanged();
+}
+
 void Remote::run(const Commands& commands) {
   Commands forOverlay;
   for (const Command& c : commands) {
     if (c.type == Command::Type::ForwardKey) {
       if (keys_) keys_->tap(c.key == RemoteKey::Next ? KEY_RIGHT : KEY_LEFT);
+      emit slideChanged();
     } else {
       forOverlay.push_back(c);
     }

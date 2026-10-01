@@ -24,7 +24,9 @@ EV_SYN, EV_KEY = 0, 1
 KEY_LEFT, KEY_RIGHT, BTN_LEFT = 105, 106, 0x110
 REPROG_IDX, PRESENTER_IDX = 0x07, 0x09
 
+KEY_F5 = 63
 HOLD_DOWN = bytes.fromhex('11010700' '00d8' '000000000000')
+NEXT_HOLD = bytes.fromhex('11010700' '00da' '000000000000')
 HOLD_UP = bytes.fromhex('110107000000000000000000')
 DOUBLE_CLICK = bytes.fromhex('11010700' '00df' '000000000000')
 
@@ -193,6 +195,47 @@ def run_daemon_tests(h, daemon):
         h.check('Next also recenters the visible effect', wait(lambda: state()[2:] == (640.0, 360.0)), str(state()))
         kb_f.send(ev(EV_KEY, KEY_LEFT, 1) + ev(EV_SYN, 0, 0) + ev(EV_KEY, KEY_LEFT, 0) + ev(EV_SYN, 0, 0))
         h.check('Back is forwarded on the virtual keyboard', wait(lambda: (got_keys.extend(forwarded_keys()), KEY_LEFT in got_keys)[1]), str(got_keys))
+
+        # --- holding Next starts the presentation (F5), not the action button's effect
+        fake.notify(NEXT_HOLD)
+        fake.notify(HOLD_UP)
+        keys_after = []
+        h.check('holding Next presses F5', wait(lambda: (keys_after.extend(forwarded_keys()), KEY_F5 in keys_after)[1]), str(keys_after))
+
+        # --- the daemon's own D-Bus interface, used by the extension and its settings window
+        def daemon(method, params=None):
+            return h.bus.call_sync('org.projecteur.Daemon', '/org/projecteur/Daemon', 'org.projecteur.Daemon1', method, params, None, 0, 3000, None).unpack()
+
+        import json
+        status = json.loads(daemon('GetStatus')[0])
+        h.check('GetStatus: the remote is connected, over the USB receiver', status['connected'] and status['connection'] == 'usb', str(status))
+        h.check('GetStatus: the timer is idle', status['timer']['state'] == 'idle', str(status['timer']))
+        h.check('GetConfig returns the reference settings', json.loads(daemon('GetConfig')[0])['pointer-speed'] == 35)
+        h.check('SetConfig accepts valid settings', daemon('SetConfig', h.GLib.Variant('(s)', (json.dumps({'pointer-speed': 70, 'hold-next-action': 'blank-screen'}),)))[0] == '')
+        h.check('SetConfig reports invalid settings', 'pointer-speed' in daemon('SetConfig', h.GLib.Variant('(s)', ('{"pointer-speed": 999}',)))[0])
+
+        # --- the new pointer speed applies at once: 70 % is twice the reference gain
+        h.call('Hide')
+        h.call('SetMode', 's', 'highlight')
+        fake.notify(HOLD_DOWN)
+        wait(lambda: state()[0])
+        x0, y0 = state()[2:]
+        for _ in range(10):
+            fake.notify(raw_move(10, 5))
+        h.check('pointer speed 70 % moves the effect 2 px per count', wait(lambda: state()[2:] == (x0 + 200.0, y0 + 100.0)), f'{state()} from {(x0, y0)}')
+        fake.notify(HOLD_UP)
+
+        # --- ... and so does the new action of holding Next
+        keys_after.clear()
+        fake.notify(NEXT_HOLD)
+        fake.notify(HOLD_UP)
+        h.check('holding Next now blanks the screen (B)', wait(lambda: (keys_after.extend(forwarded_keys()), 48 in keys_after)[1]), str(keys_after))
+
+        # --- timer over D-Bus
+        daemon('TimerStart')
+        h.check('TimerStart starts the timer', json.loads(daemon('GetStatus')[0])['timer']['state'] == 'running')
+        daemon('TimerReset')
+        h.check('TimerReset resets it', json.loads(daemon('GetStatus')[0])['timer']['state'] == 'idle')
     finally:
         # --- clean shutdown gives the buttons back
         if proc.poll() is None:

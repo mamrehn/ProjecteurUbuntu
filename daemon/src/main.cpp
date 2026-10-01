@@ -11,10 +11,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "dbusservice.h"
 #include "discovery.h"
 #include "keysink.h"
 #include "overlayclient.h"
 #include "remote.h"
+#include "service.h"
 
 Q_LOGGING_CATEGORY(lcMain, "projecteur.main")
 
@@ -75,11 +77,19 @@ int main(int argc, char** argv) {
     return 1;
   }
   OverlayClient overlay(bus);
+  Service service;
+  QString exportError;
+  if (!exportService(bus, &service, &exportError)) {
+    qCCritical(lcMain).noquote() << exportError;
+    return 1;
+  }
 
   Remote::Options options;
   options.grab = !parser.isSet(noGrab);
+  options.config = service.config();
 
   std::unique_ptr<KeySink> keys;
+  std::unique_ptr<PointerSink> pointer;
   Remote* testRemote = nullptr;
   RemoteWatcher* watcher = nullptr;
 
@@ -90,8 +100,10 @@ int main(int argc, char** argv) {
       return 2;
     }
     keys = std::make_unique<FdKeySink>(f[3].toInt());
+    pointer = std::make_unique<FdPointerSink>(f[3].toInt());
     options.grab = false;
-    testRemote = new Remote({f[0].toInt(), f[1].toInt(), f[2].toInt()}, keys.get(), &overlay, options, &app);
+    testRemote = new Remote({f[0].toInt(), f[1].toInt(), f[2].toInt()}, keys.get(), pointer.get(), &overlay, options, &app);
+    service.setRemote(testRemote);
   } else {
     QString error;
     keys = UinputKeyboard::create(&error);
@@ -99,7 +111,10 @@ int main(int argc, char** argv) {
       qCWarning(lcMain).noquote() << error << "- not capturing the remote's keys, so Next/Back keep working unprocessed";
       options.grab = false;
     }
-    watcher = new RemoteWatcher(keys.get(), &overlay, options, &app);
+    pointer = UinputPointer::create(&error);
+    if (!pointer) qCWarning(lcMain).noquote() << error << "- the scroll action is unavailable";
+    watcher = new RemoteWatcher(keys.get(), pointer.get(), &overlay, options, &app);
+    QObject::connect(watcher, &RemoteWatcher::remoteChanged, &service, &Service::setRemote);
     watcher->start();
   }
   qCInfo(lcMain) << "projecteurd running";

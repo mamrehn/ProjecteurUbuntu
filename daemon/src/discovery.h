@@ -35,14 +35,19 @@ SpotlightNodes findSpotlight();
 class RemoteWatcher : public QObject {
   Q_OBJECT
  public:
-  RemoteWatcher(KeySink* keys, OverlaySink* overlay, Remote::Options options, QObject* parent = nullptr);
+  RemoteWatcher(KeySink* keys, PointerSink* pointer, OverlaySink* overlay, Remote::Options options, QObject* parent = nullptr);
   void start(int intervalMs = 2000);
   bool connected() const { return remote_ != nullptr; }
+  Remote* remote() const { return remote_; }
+
+ signals:
+  void remoteChanged(Remote* remote);  ///< a remote appeared (right after it was created), or nullptr: it is gone
 
  private:
   void poll();
 
   KeySink* keys_;
+  PointerSink* pointer_;
   OverlaySink* overlay_;
   Remote::Options options_;
   Remote* remote_ = nullptr;
