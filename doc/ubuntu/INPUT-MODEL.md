@@ -78,6 +78,22 @@ The daemon ran on the real remote, connected directly (no receiver). The same ev
 * In 3 of 9 holds a plain mouse movement report (report 2) came in just before the release. The daemon holds
   the exclusive grab, so it never reaches the compositor.
 
+### Rotation test, first attempt (2026-10-01, unguided, Bluetooth)
+
+Nine holds were recorded instead of the 21 asked for, and they cannot be matched to the requested turns (the
+instructions were only in a notification that disappeared). What the data does show:
+
+* Turning the remote flat on a table moves **only X**: `dy` stayed within about +-130 counts while `dx` reached
+  thousands. The remote reports yaw as X.
+* Two clean single swings gave +3373 counts (0.56 s) and about +3474 counts (first half of a hold that was then
+  swung back). They agree within 3 %, but the angle was not recorded, so the scale is 19 counts per degree if
+  they were 180 degrees and 38 if they were 90.
+* Holds with back-and-forth turns ended with net sums near zero after thousands of counts each way
+  (for example +88 after 20 s), which is consistent with the counts being an integrated angle.
+* Peak speed in a fast turn: about 13,000 counts per second. Largest single report: 127 counts.
+
+`tools/spotlight_calibrate.py` replaces this with a guided run that checks every hold itself.
+
 ## Not measured yet
 
 * The double-click time window. With slow double-clicks (0.9 to 1.4 s) the first click was reported as
