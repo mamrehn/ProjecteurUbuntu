@@ -58,6 +58,24 @@ works on this hardware.
 | 15 | Per-application profiles ("Add application") | separate settings per app | Ext (focused-window app id) + Daemon | absent |
 | 16 | Device info | firmware versions; "check for update" | Daemon (read-only) | firmware info reading present |
 
+### Implementation status of the table above (2026-10-01)
+
+| # | Feature | State |
+|---|---|---|
+| 1-3 | Highlight, live Magnify, Laser | done; sizes, contrast, colours from the Windows recording (curves still hypotheses beyond one point per effect, see 4a) |
+| 4 | Effect selection by double click | done (cycle skips switched-off effects) |
+| 5 | Pointer speed | done as a gain on the remote's raw counts (35 % = 1 pixel per count, linear); the remote's own `PointerSpeed` is only set while *cursor control* is on |
+| 6 | Cursor control | done (the action button's movement goes to the system pointer; effects are off meanwhile) |
+| 7 | Re-center on slide change | done; on several monitors the centre of the monitor the effect is on |
+| 8 | Freeze | done |
+| 9-10 | Hold Next / Back | done: nothing, start presentation (F5), blank screen (B), fast forward/rewind (repeat Next/Back every 250 ms), volume and scroll by tilting, shortcut. "Smart actions" are not offered |
+| 11 | Timer | done: 1 to 600 min, three alerts, auto-start on first slide change or "start presentation", pause/resume/reset from the top bar |
+| 12 | Vibration | done: strength, test button, battery warning, timer alerts; short pulses only (policy) |
+| 13 | Battery | done: level in the top bar and the settings window; low-battery warning at 20 % |
+| 14 | Connection indicator | done: USB receiver / Bluetooth |
+| 15 | Per-application profiles | done: by desktop-file id of the focused window |
+| 16 | Device info | done: firmware and bootloader version, read-only |
+
 ## 3. Out of scope (confirmed by the user, 2026-09-30)
 
 | Windows feature | Why |

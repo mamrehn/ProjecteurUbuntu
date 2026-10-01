@@ -1,8 +1,11 @@
 # Plan: Logitech Spotlight for Ubuntu 26.04 (GNOME 50, Wayland, Qt6)
 
-Status: **spike 1 done** (M0 harness + the overlay effects, verified in a headless shell only; see
-[Spike 1 results](#spike-1-results-2026-09-30)). Everything else is still plan. The interim `install.sh`
-at the repository root sets up Ubuntu's packaged Projecteur 0.10. Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md). What the remote sends: [INPUT-MODEL.md](INPUT-MODEL.md).
+Status (2026-10-01): **M0 to M6 are done and tested without a real desktop session; M7 (hardening) is partly done.**
+The daemon, the GNOME Shell extension, the settings window and the package exist and pass `tests/run-all.sh`. What is
+**not** done: the extension has never run in the maintainer's real session (only in isolated headless shells), AMD and
+NVIDIA graphics are untested, and a clean-system install of the package was not tested (disk full during the attempt).
+Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md). What the remote sends: [INPUT-MODEL.md](INPUT-MODEL.md).
+The first version of the plan follows; the table of milestones has the current state.
 
 ## Target
 
@@ -71,22 +74,21 @@ and **fractional scaling**, and be usable while sharing the **whole screen** in 
 
 ## Milestones (each with an automated acceptance check where possible)
 
-| M | Deliverable | Acceptance |
+| M | Deliverable | State |
 |---|---|---|
-| 0 | **Done.** Headless-shell test harness `tests/headless/run.py` (isolated shell, drives the extension over D-Bus, screenshots the virtual monitor, asserts pixels). Build tooling for the Qt6 daemon is still missing (`cmake`, `ninja`, `pkg-config`, Qt6 dev packages). | 29 checks pass |
-| 1 | **Spike done in the headless shell**: round live lens, highlight, laser, D-Bus control, enable/disable. **Open:** try it in the real session, real windows/fullscreen apps, sizes calibrated to the Windows app, follow-the-device state machine. | pixel checks pass; see results below |
-| 2 | Daemon: KDE code removed, builds on Ubuntu 26.04 with Qt6, systemd user service, USB + Bluetooth detection, D-Bus API to the extension | device detected; extension receives activate/move/deactivate |
-| 3 | Buttons: hold-Next/Back actions, double-click cycling, freeze, re-center, cursor control | scripted device events → expected key events / effect state |
-| 4 | Prefs GUI for every applicable setting, per-app profiles | settings round-trip; profile switches with the focused window |
-| 5 | Timer, vibration, battery warning | timers fire vibration commands (mocked device) |
-| 6 | `.deb` (daemon, extension, udev rules, user service), updated `install.sh`, uninstall | clean install/uninstall in a fresh Ubuntu 26.04 VM |
-| 7 | Hardening on real hardware: multi-monitor, fractional scaling, Intel/AMD/NVIDIA, Teams/Zoom whole-screen share | checklist run on colleagues' machines |
+| 0 | Headless-shell test harness `tests/headless/run.py` (whole process tree isolated: HOME, XDG dirs, runtime dir, GSettings keyfile, private D-Bus) | **done** |
+| 1 | Spike: round live lens, highlight, laser, D-Bus control, enable/disable | **done** (headless) |
+| 2 | Daemon in `daemon/` (Qt6, no KDE): USB + Bluetooth detection, D-Bus API, settings as JSON | **done**; verified on the real remote over Bluetooth and USB |
+| 3 | Buttons: hold-Next/Back actions, double-click cycling, freeze, re-center, cursor control | **done** (held Next/Back measured on hardware; timing against Windows not compared) |
+| 4 | Settings window for every setting, per-application profiles | **done**; real widgets tested, opened through the shell |
+| 5 | Timer, vibration (short pulses), battery warning | **done**; vibration confirmed by hand ("connected" pulse), timer and battery tested with a simulated remote |
+| 6 | `.deb`, `setup.sh`, udev rules, systemd user service, `projecteur-setup` | **done**; package builds, installs in simulation, service runs under its restrictions; clean-system install not tested |
+| 7 | Hardening: multi-monitor, fractional scaling, 4K, GPUs, Teams/Zoom | **partly**: five display layouts pass in the headless shell (Intel only); AMD, NVIDIA, a real session and screen sharing are open |
 
 ## Open decisions
 
-* Where settings live (GSettings vs a config file owned by the daemon) – decide in M2.
-* Whether to keep any KF6 dependency during the port or remove all of them at once – decide by a
-  daemon-only build spike in M2.
+* Where settings live: **decided** – GSettings of the extension; the extension pushes the daemon's keys over D-Bus (`SetConfig`), under the same key names, and again whenever the daemon (re)starts. The daemon keeps nothing on disk.
+* KF6 dependencies: **decided** – none. The daemon needs Qt6 Core and DBus only.
 * Publishing: this fork is public on GitHub; the license (MIT, Jahn Fuchs) and attribution stay.
 
 ## Spike 1 results (2026-09-30)

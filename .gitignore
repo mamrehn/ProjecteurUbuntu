@@ -12,3 +12,4 @@ screenshots_*/
 __pycache__/
 *.pyc
 gschemas.compiled
+*.deb

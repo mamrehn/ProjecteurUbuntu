@@ -1,0 +1,23 @@
+[Unit]
+Description=Logitech Spotlight daemon (projecteurd)
+Documentation=https://github.com/mamrehn/ProjecteurUbuntu
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/projecteurd
+Restart=on-failure
+RestartSec=3
+
+# No namespaces here (Ubuntu restricts them for unprivileged users); these are enforced by seccomp and the kernel.
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=graphical-session.target

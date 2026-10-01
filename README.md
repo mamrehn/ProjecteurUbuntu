@@ -1,17 +1,70 @@
 # Logitech Spotlight on Ubuntu 26.04
 
-Get a **Logitech Spotlight** presenter working on **Ubuntu 26.04 LTS (GNOME, Wayland)** with
-[Projecteur](https://github.com/gbin/Projecteur): the virtual laser pointer, the dimmed
-spotlight overlay, and the Next/Back buttons.
+A fork of [Projecteur](https://github.com/gbin/Projecteur) for the **Logitech Spotlight** (original version, USB
+receiver or Bluetooth) on **Ubuntu 26.04 LTS with GNOME Shell 50 on Wayland**. Upstream's own README is kept in
+[README.upstream.md](README.upstream.md).
 
-> **About this repository.** It is a fork of [gbin/Projecteur](https://github.com/gbin/Projecteur) for
-> Ubuntu 26.04 / GNOME on Wayland (upstream's README: [README.upstream.md](README.upstream.md)).
-> Everything below sets up Ubuntu's *packaged* Projecteur 0.10, an interim solution **without zoom**.
-> The fork's own Qt6 + GNOME Shell version (live zoom, all features of the Windows app) is planned in
-> [doc/ubuntu/PLAN.md](doc/ubuntu/PLAN.md) and [doc/ubuntu/FEATURE-PARITY.md](doc/ubuntu/FEATURE-PARITY.md).
+Projecteur's zoom cannot work on GNOME (the desktop does not allow it to take screenshots), and its overlay steals the
+keyboard focus on Wayland. This fork therefore does the drawing **inside GNOME Shell** and keeps the device handling in a
+small Qt6 daemon. The aim is everything the Windows app (Logi Options+) offers for this remote:
+
+| Feature | How it works here |
+|---|---|
+| **Highlight**, **Magnify** (live, 2x, round lens), **Laser** | hold the top button: the effect appears at the mouse pointer and follows the *remote's* movement; release: it stays (freeze); short click: hides it; double click: next effect |
+| Size, contrast, colours | settings window, values calibrated against recordings of the Windows app ([FEATURE-PARITY.md](doc/ubuntu/FEATURE-PARITY.md)) |
+| Pointer speed, cursor control, re-center on slide change | settings window |
+| Hold **Next** / **Back** | start presentation (F5), blank screen (B), fast forward / rewind, volume or scrolling by tilting the remote, or any keyboard shortcut |
+| Presentation timer | 1 to 600 minutes, up to three alerts, started by the first slide change; the remote vibrates in short pulses (two for an alert, three for the end), shown in the top bar |
+| Vibration, battery | strength setting, test button, battery level, four short pulses when it runs low |
+| **Per-application profiles** | an application's own settings apply while it has the focus |
+| Remote page | connection (USB / Bluetooth), battery, firmware versions |
+
+Not included (by decision): cloud backup of settings, firmware update.
+
+## Install
 
 ```bash
-git clone <this repo> && cd spotlight_presenter_on_ubuntu
+git clone https://github.com/mamrehn/ProjecteurUbuntu && cd ProjecteurUbuntu
+./setup.sh --enable        # builds the package, installs it with sudo apt, switches it on for you
+```
+
+Then **log out and in once** (GNOME Shell on Wayland only notices a new extension at login). Settings:
+`gnome-extensions prefs projecteur-overlay@mamrehn.github.io`, or the Extensions app. `./setup.sh --check` diagnoses
+and changes nothing; `./setup.sh --uninstall` removes everything. The package replaces Ubuntu's Qt5 `projecteur`
+package (the two cannot run together). Without `--enable` nothing is switched on: run `projecteur-setup enable` later.
+
+If anything misbehaves, `projecteur-setup disable` returns the remote to a plain keyboard and mouse at once.
+
+## What was verified, and what was not
+
+Verified automatically (`tests/run-all.sh`, about 90 s): the daemon with a simulated remote speaking the recorded bytes;
+the extension in an **isolated, headless GNOME Shell 50.1** with pixel checks of every effect, the settings window
+(real widgets, and opened through GNOME), per-application profiles with a real Wayland window, and the daemon talking to
+the extension; two monitors of different sizes, 1.5x on 1080p, mixed 1.25x / 1.33x, 4K at 2x and 1.5x. Verified by hand
+on one remote: Next/Back, the action button, hold and double click, raw movement (49.5 counts per degree of turn), held
+Next/Back, battery, firmware, vibration, over **Bluetooth** and the **USB receiver**.
+
+**Not verified yet:** the extension in a real desktop session (so far only in throwaway headless shells, on purpose:
+an extension runs inside the compositor, and a bug there can freeze the desktop); AMD and NVIDIA graphics (only an
+Intel iGPU was available); what Windows does on several monitors (this fork dims and magnifies the monitor the effect is
+on); timing of the hold actions against the Windows app; the Spotlight 2, which is not supported. Details and the
+input measurements: [doc/ubuntu/INPUT-MODEL.md](doc/ubuntu/INPUT-MODEL.md), plan: [doc/ubuntu/PLAN.md](doc/ubuntu/PLAN.md).
+
+## Safety net
+
+GNOME Shell writes `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions` while it enables extensions; if the shell crashes
+at that moment, Ubuntu starts it again with extensions off. To switch this one off by hand from a text console
+(Ctrl+Alt+F3): `gnome-extensions disable projecteur-overlay@mamrehn.github.io`. **Do not use GNOME's built-in magnifier**
+(Settings > Accessibility > Zoom) as a substitute: it froze one test machine.
+
+---
+
+# Alternative: Ubuntu's packaged Projecteur 0.10 (no zoom)
+
+The rest of this page documents the earlier interim route: Ubuntu's own Qt5 package, started under XWayland, with
+**no zoom**. `./install.sh` sets it up. Use it only if you cannot use the fork's version above.
+
+```bash
 ./install.sh --autostart      # run as your normal user, not with sudo
 ```
 

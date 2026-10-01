@@ -1,0 +1,14 @@
+# Logitech Spotlight (version 1) for projecteurd: let the user who is logged in at the machine open the remote's
+# device nodes (HID++ and the two input nodes) and create virtual input devices.
+# Installed to /usr/lib/udev/rules.d/ by the projecteur-gnome package.
+
+# USB receiver (046d:c53e): applies to all device nodes below it
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c53e", MODE="0660", TAG+="uaccess"
+
+# Bluetooth (046d:b503): the input nodes ("SPOTLIGHT Keyboard", "SPOTLIGHT Mouse") and the hidraw node
+SUBSYSTEM=="input", ATTRS{id/vendor}=="046d", ATTRS{id/product}=="b503", MODE="0660", TAG+="uaccess"
+SUBSYSTEMS=="hid", KERNELS=="0005:046D:B503.*", MODE="0660", TAG+="uaccess"
+
+# uinput: the daemon grabs the remote's keys and sends them on through a virtual keyboard, and scrolls through a
+# virtual pointer
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

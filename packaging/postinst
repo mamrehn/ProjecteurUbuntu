@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    # apply the new rules to the devices that are already there (no reboot, no unplugging)
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger --action=change --subsystem-match=hidraw --subsystem-match=input --subsystem-match=misc 2>/dev/null || true
+    cat <<'MSG'
+
+projecteur-gnome is installed. Switch it on for your user (no sudo):
+
+    projecteur-setup enable
+
+GNOME Shell on Wayland only sees a new extension after you log out and in once.
+MSG
+fi
+exit 0

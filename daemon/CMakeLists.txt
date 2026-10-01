@@ -85,3 +85,14 @@ add_test(NAME holdactions COMMAND test_holdactions)
 add_executable(test_service tests/test_service.cpp tests/fakeremote.h)
 target_link_libraries(test_service PRIVATE daemoncore Qt6::Test)
 add_test(NAME service COMMAND test_service)
+
+# ---- installation (used by packaging/build-deb.sh; prefix /usr) ---------------------------------------
+include(GNUInstallDirs)
+set(EXTENSION_UUID "projecteur-overlay@mamrehn.github.io")
+install(TARGETS projecteurd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS ../packaging/projecteur-setup DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ../packaging/projecteurd.service DESTINATION lib/systemd/user)
+install(FILES ../packaging/55-projecteurd.rules DESTINATION lib/udev/rules.d)
+install(FILES ../packaging/projecteurd-modules.conf DESTINATION lib/modules-load.d RENAME projecteurd.conf)
+install(DIRECTORY ../gnome-shell/${EXTENSION_UUID} DESTINATION share/gnome-shell/extensions
+        PATTERN "gschemas.compiled" EXCLUDE)
