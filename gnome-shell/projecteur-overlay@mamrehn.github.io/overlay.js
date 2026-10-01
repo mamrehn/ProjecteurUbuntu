@@ -147,8 +147,7 @@ export class Overlay {
     /** Windows behaviour: the effect appears at the mouse cursor, not where it was last hidden. */
     showAtPointer(mode) {
         const [x, y] = global.get_pointer();
-        this._x = this._clampX(x);
-        this._y = this._clampY(y);
+        [this._x, this._y] = this._clamp(x, y);
         this.show(mode);
     }
 
@@ -169,8 +168,7 @@ export class Overlay {
     }
 
     moveTo(x, y) {
-        this._x = this._clampX(x);
-        this._y = this._clampY(y);
+        [this._x, this._y] = this._clamp(x, y);
         this._sync();
     }
 
@@ -191,8 +189,23 @@ export class Overlay {
     }
 
     // -- geometry -----------------------------------------------------------------------------
-    _clampX(x) { return Math.min(Math.max(x, 0), global.stage.width); }
-    _clampY(y) { return Math.min(Math.max(y, 0), global.stage.height); }
+    /**
+     * The nearest point that lies on a monitor. Monitors of different sizes leave parts of the stage empty; an effect
+     * moved into such a gap would be centred on nothing, so it stops at the edge of the closest monitor instead.
+     */
+    _clamp(x, y) {
+        let best = null, bestDistance = Infinity;
+        for (const m of Main.layoutManager.monitors) {
+            const px = Math.min(Math.max(x, m.x), m.x + m.width - 1);
+            const py = Math.min(Math.max(y, m.y), m.y + m.height - 1);
+            const d = (x - px) ** 2 + (y - py) ** 2;
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = [px, py];
+            }
+        }
+        return best ?? [x, y];
+    }
 
     _monitor() {
         return Main.layoutManager.findMonitorForPoint(this._x, this._y) ?? Main.layoutManager.primaryMonitor;
@@ -269,15 +282,15 @@ export class Overlay {
         }
         if (this._pattern)
             return;
-        const m = Main.layoutManager.primaryMonitor;
+        const width = global.stage.width, height = global.stage.height;
         this._pattern = new St.Widget({
             name: 'projecteur-test-pattern',
             reactive: false,
-            x: m.x, y: m.y, width: m.width, height: m.height,
+            x: 0, y: 0, width, height,
             layout_manager: new Clutter.FixedLayout(),
         });
-        for (let j = 0; j * TEST_TILE < m.height; j++) {
-            for (let i = 0; i * TEST_TILE < m.width; i++) {
+        for (let j = 0; j * TEST_TILE < height; j++) {
+            for (let i = 0; i * TEST_TILE < width; i++) {
                 const [r, g, b] = testTileColor(i, j);
                 this._pattern.add_child(new St.Widget({
                     reactive: false,

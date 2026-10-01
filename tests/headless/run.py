@@ -88,8 +88,10 @@ class Shot:
 
 # ---------------------------------------------------------------------------------------------
 class Harness:
-    def __init__(self, keep, daemon=None):
+    def __init__(self, keep, daemon=None, monitors=None, scale=None):
         self.daemon = daemon
+        self.monitors = monitors or [(W, H)]   # virtual monitors, placed left to right
+        self.scale = scale                     # fractional scale to apply to every monitor after start-up
         from gi.repository import Gio, GLib
         self.Gio, self.GLib = Gio, GLib
         self.keep = keep
@@ -108,8 +110,10 @@ class Harness:
         self.ext_dir = t / 'data/gnome-shell/extensions' / UUID
         shutil.copytree(EXT_SRC, self.ext_dir)
         subprocess.run(['glib-compile-schemas', '--strict', str(self.ext_dir / 'schemas')], check=True)
-        (t / 'config/glib-2.0/settings/keyfile').write_text(
-            f"[org/gnome/shell]\nenabled-extensions=['{UUID}']\n")
+        keyfile = f"[org/gnome/shell]\nenabled-extensions=['{UUID}']\n"
+        if self.scale:   # fractional scaling is an experimental feature of mutter
+            keyfile += "\n[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n"
+        (t / 'config/glib-2.0/settings/keyfile').write_text(keyfile)
 
         env = dict(os.environ)
         for k in ('WAYLAND_DISPLAY', 'DISPLAY', 'GNOME_SETUP_DISPLAY'):
@@ -126,7 +130,7 @@ class Harness:
             '[Desktop Entry]\nType=Application\nName=Projecteur test window\nExec=true\nNoDisplay=true\n')
         self.log = open(t / 'shell.log', 'wb')
         self.proc = subprocess.Popen(
-            ['gnome-shell', '--headless', '--wayland', '--no-x11', '--virtual-monitor', f'{W}x{H}'],
+            ['gnome-shell', '--headless', '--wayland', '--no-x11'] + [a for w, h in self.monitors for a in ('--virtual-monitor', f'{w}x{h}')],
             env=env, stdout=self.log, stderr=subprocess.STDOUT)
 
         self.bus = self.connect_private_bus()
@@ -219,7 +223,8 @@ class Harness:
         if not ok:
             raise RuntimeError('Screenshot() reported failure')
         s = Shot(path)
-        assert (s.w, s.h) == (W, H), f'unexpected screenshot size {s.w}x{s.h}'
+        if self.monitors == [(W, H)]:
+            assert (s.w, s.h) == (W, H), f'unexpected screenshot size {s.w}x{s.h}'
         return s
 
     # -- reporting -------------------------------------------------------------------------
@@ -398,12 +403,18 @@ def run_tests(h):
 def inner(argv):
     keep = '--keep' in argv
     daemon = argv[argv.index('--daemon') + 1] if '--daemon' in argv else None
-    h = Harness(keep, daemon)
+    monitors = [tuple(int(v) for v in m.split('x')) for m in argv[argv.index('--monitors') + 1].split(',')] if '--monitors' in argv else None
+    scale = float(argv[argv.index('--scale') + 1]) if '--scale' in argv else None
+    h = Harness(keep, daemon, monitors, scale)
     rc = 1
     try:
         print(f'temp dir: {h.tmp}')
         h.start()
-        run_tests(h)
+        if monitors or scale:
+            from displays import run_display_tests
+            run_display_tests(h)
+        else:
+            run_tests(h)
         failed = [r for r in h.results if not r[1]]
         print(f'\n{len(h.results) - len(failed)}/{len(h.results)} checks passed')
         rc = 1 if failed else 0
