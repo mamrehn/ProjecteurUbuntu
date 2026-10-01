@@ -78,6 +78,22 @@ The daemon ran on the real remote, connected directly (no receiver). The same ev
 * In 3 of 9 holds a plain mouse movement report (report 2) came in just before the release. The daemon holds
   the exclusive grab, so it never reaches the compositor.
 
+### Holding Next or Back (measured 2026-10-01, Bluetooth, `projecteurd --verbose`, 17 holds)
+
+With `0xda` (Next) and `0xdc` (Back) diverted using flags `0x33`:
+
+* **A tap behaves as before**: `KEY_RIGHT` / `KEY_LEFT` down and up on the keyboard node (about 60 ms apart).
+* **A hold sends no key at all**: not at the start, not repeated, not at the end (17 of 17 holds). The hold is
+  reported only as HID++ (`11 ff 07 00 00 da ...` down, `... 00 00 ...` up), so holding Next does **not** advance
+  a slide.
+* **The hold starts about one second into the press.** Reported hold durations were consistently about a second
+  shorter than the press felt (intended 2 s gave 0.9 and 1.1 s; the shortest reported holds, 0.11 to 0.45 s, were
+  presses slightly longer than the threshold). This is inferred from your timing, not measured with a stopwatch;
+  the threshold is the remote's, so the action (for example F5) fires about a second after pressing.
+* **Raw X/Y arrives while the remote moves** (about 90 reports a second; none while it is still), like the action
+  button. Tilting up gives negative `dy`. Sums over the 17 holds: tilts of 400 to 1000 counts (8 to 20 degrees).
+* While a hold is active the action button still sends its own events.
+
 ### Movement counts per degree (measured 2026-10-01, guided, Bluetooth)
 
 `tools/spotlight_calibrate.py`: the remote flat on a table, action button held, one turn of 90 or 180 degrees per
