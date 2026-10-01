@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT
+     Defaults are the reference configuration of the Windows app (doc/ubuntu/FEATURE-PARITY.md, section 1). The key
+     names of the daemon's settings (everything except the appearance keys, profiles and show-indicator) are also the
+     JSON keys of org.projecteur.Daemon1.SetConfig. settingsModel.js repeats types and defaults; a test compares both. -->
+<schemalist gettext-domain="projecteur-overlay">
+  <schema id="org.gnome.shell.extensions.projecteur-overlay" path="/org/gnome/shell/extensions/projecteur-overlay/">
+
+    <!-- pointer effects -->
+    <key name="highlight-enabled" type="b"><default>true</default><summary>Highlight effect</summary></key>
+    <key name="highlight-contrast" type="i"><range min="0" max="100"/><default>80</default><summary>Highlight contrast in percent</summary></key>
+    <key name="highlight-size" type="i"><range min="0" max="100"/><default>43</default><summary>Highlight size in percent</summary></key>
+    <key name="magnify-enabled" type="b"><default>true</default><summary>Magnify effect</summary></key>
+    <key name="magnify-size" type="i"><range min="0" max="100"/><default>80</default><summary>Magnifier size in percent</summary></key>
+    <key name="magnify-color" type="s"><default>'#00f8be'</default><summary>Colour of the magnifier ring</summary></key>
+    <key name="laser-enabled" type="b"><default>true</default><summary>Laser effect</summary></key>
+    <key name="laser-size" type="i"><range min="0" max="100"/><default>12</default><summary>Laser size in percent</summary></key>
+    <key name="laser-color" type="s"><default>'#ff0000'</default><summary>Laser colour</summary></key>
+
+    <!-- behaviour -->
+    <key name="pointer-speed" type="i"><range min="0" max="100"/><default>35</default><summary>Pointer speed in percent</summary></key>
+    <key name="cursor-control" type="b"><default>false</default><summary>The remote moves the mouse cursor instead of showing effects</summary></key>
+    <key name="recenter-effects" type="b"><default>true</default><summary>Move a visible effect back to the centre on slide change</summary></key>
+    <key name="freeze-effects" type="b"><default>true</default><summary>Keep the effect on screen after releasing the button</summary></key>
+
+    <!-- buttons -->
+    <key name="hold-next-action" type="s">
+      <choices>
+        <choice value="none"/><choice value="start-presentation"/><choice value="blank-screen"/><choice value="fast-forward"/>
+        <choice value="fast-rewind"/><choice value="volume"/><choice value="scroll"/><choice value="shortcut"/>
+      </choices>
+      <default>'start-presentation'</default><summary>Action of holding the Next button</summary>
+    </key>
+    <key name="hold-back-action" type="s">
+      <choices>
+        <choice value="none"/><choice value="start-presentation"/><choice value="blank-screen"/><choice value="fast-forward"/>
+        <choice value="fast-rewind"/><choice value="volume"/><choice value="scroll"/><choice value="shortcut"/>
+      </choices>
+      <default>'blank-screen'</default><summary>Action of holding the Back button</summary>
+    </key>
+    <key name="hold-next-shortcut" type="ai"><default>[]</default><summary>Key codes of the shortcut for holding Next (evdev codes, modifiers first)</summary></key>
+    <key name="hold-back-shortcut" type="ai"><default>[]</default><summary>Key codes of the shortcut for holding Back</summary></key>
+
+    <!-- vibration -->
+    <key name="vibration-intensity" type="i"><range min="0" max="100"/><default>50</default><summary>Vibration intensity in percent (0 turns it off)</summary></key>
+    <key name="battery-warning" type="b"><default>true</default><summary>Vibrate when the battery is low</summary></key>
+
+    <!-- timer -->
+    <key name="timer-enabled" type="b"><default>false</default><summary>Presentation timer</summary></key>
+    <key name="timer-minutes" type="i"><range min="1" max="600"/><default>30</default><summary>Timer duration in minutes</summary></key>
+    <key name="timer-auto-start" type="b"><default>true</default><summary>Start the timer with the first slide change</summary></key>
+    <key name="timer-alerts" type="ai"><default>[5]</default><summary>Minutes remaining at which the remote vibrates (up to three)</summary></key>
+    <key name="timer-notification" type="b"><default>true</default><summary>Vibrate for timer alerts</summary></key>
+
+    <!-- the extension itself -->
+    <key name="show-indicator" type="b"><default>true</default><summary>Show the indicator in the top bar</summary></key>
+    <key name="profiles" type="s"><default>'{}'</default>
+      <summary>Per-application settings</summary>
+      <description>A JSON object: application id (desktop file name) to the settings that differ from the general ones.</description>
+    </key>
+  </schema>
+</schemalist>

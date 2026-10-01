@@ -4,5 +4,6 @@
   "description": "On-screen pointer effects (highlight, live magnifier, laser) for a Logitech Spotlight, driven over D-Bus by the projecteur daemon.",
   "shell-version": ["50"],
   "url": "https://github.com/mamrehn/ProjecteurUbuntu",
-  "version": 1
+  "settings-schema": "org.gnome.shell.extensions.projecteur-overlay",
+  "version": 2
 }

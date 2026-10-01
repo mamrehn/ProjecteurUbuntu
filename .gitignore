@@ -11,3 +11,4 @@ icons/icon-font/output/
 screenshots_*/
 __pycache__/
 *.pyc
+gschemas.compiled

@@ -28,6 +28,7 @@ const IFACE_XML = `
     ${TESTING ? `
     <method name="TestPattern"><arg type="b" direction="in" name="on"/></method>
     <method name="StageChildCount"><arg type="i" direction="out" name="count"/></method>
+    <method name="ExtensionState"><arg type="s" direction="out" name="json"/></method>
     <method name="PickAt"><arg type="d" direction="in" name="x"/><arg type="d" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     ` : ''}
   </interface>
@@ -35,8 +36,10 @@ const IFACE_XML = `
 
 /** Exposes an Overlay on the session bus as org.projecteur.Overlay1. */
 export class OverlayService {
-    constructor(overlay) {
+    /** @param {function(): object} extensionState test support: the focused app and what was last sent to the daemon */
+    constructor(overlay, extensionState = () => ({})) {
         this._overlay = overlay;
+        this._extensionState = extensionState;
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE_XML, this);
     }
 
@@ -72,4 +75,5 @@ export class OverlayService {
     TestPattern(on) { this._overlay.testPattern(on); }
     PickAt(x, y) { return this._overlay.pickAt(x, y); }
     StageChildCount() { return global.stage.get_n_children(); }
+    ExtensionState() { return JSON.stringify(this._extensionState()); }
 }

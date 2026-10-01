@@ -88,7 +88,10 @@ class Harness:
         for d in ('home', 'config/glib-2.0/settings', 'data/gnome-shell/extensions', 'cache', 'runtime'):
             (t / d).mkdir(parents=True, exist_ok=True)
         (t / 'runtime').chmod(0o700)
-        (t / 'data/gnome-shell/extensions' / UUID).symlink_to(EXT_SRC)
+        # a copy, not a link: the schema is compiled next to it, and the repository stays clean
+        self.ext_dir = t / 'data/gnome-shell/extensions' / UUID
+        shutil.copytree(EXT_SRC, self.ext_dir)
+        subprocess.run(['glib-compile-schemas', '--strict', str(self.ext_dir / 'schemas')], check=True)
         (t / 'config/glib-2.0/settings/keyfile').write_text(
             f"[org/gnome/shell]\nenabled-extensions=['{UUID}']\n")
 
@@ -101,6 +104,10 @@ class Harness:
             'XDG_RUNTIME_DIR': str(t / 'runtime'),
             'GSETTINGS_BACKEND': 'keyfile', 'PROJECTEUR_OVERLAY_TESTING': '1',
         })
+        apps = t / 'data/applications'
+        apps.mkdir(parents=True, exist_ok=True)
+        (apps / 'org.projecteur.TestApp.desktop').write_text(
+            '[Desktop Entry]\nType=Application\nName=Projecteur test window\nExec=true\nNoDisplay=true\n')
         self.log = open(t / 'shell.log', 'wb')
         self.proc = subprocess.Popen(
             ['gnome-shell', '--headless', '--wayland', '--no-x11', '--virtual-monitor', f'{W}x{H}'],
@@ -353,6 +360,9 @@ def run_tests(h):
     print(f'      shell CPU: idle {idle:.1f} %, lens moving at ~{rate:.0f} updates/s {busy:.1f} % of one core')
     h.check('moving the live lens stays under 60 % of one core', busy < 60, f'{busy:.1f} %')
     h.call('Hide')
+
+    from ext_features import run_extension_tests
+    run_extension_tests(h)
 
     if h.daemon:
         from daemon_e2e import run_daemon_tests

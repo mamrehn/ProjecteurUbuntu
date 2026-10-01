@@ -22,7 +22,8 @@ import run as common  # noqa: E402  (pure helpers: tile_at, close, W, H, diamete
 EV = struct.Struct('llHHi')
 EV_SYN, EV_KEY = 0, 1
 KEY_LEFT, KEY_RIGHT, BTN_LEFT = 105, 106, 0x110
-REPROG_IDX, PRESENTER_IDX = 0x07, 0x09
+REPROG_IDX, PRESENTER_IDX, BATTERY_IDX, FIRMWARE_IDX, SPEED_IDX = 0x07, 0x09, 0x06, 0x02, 0x0a
+FEATURES = {0x1b04: REPROG_IDX, 0x1a00: PRESENTER_IDX, 0x1000: BATTERY_IDX, 0x0003: FIRMWARE_IDX, 0x2205: SPEED_IDX}
 
 KEY_F5 = 63
 HOLD_DOWN = bytes.fromhex('11010700' '00d8' '000000000000')
@@ -57,9 +58,20 @@ class FakeSpotlight(threading.Thread):
             if not m:
                 return
             self.requests.append(m)
+            function = m[3] >> 4
+
+            def long_answer(*data):
+                return bytes([0x11, m[1], m[2], m[3]]) + bytes(data) + bytes(16 - len(data))
+
             if m[2] == 0x00:      # IRoot.GetFeature(feature id) -> index
                 fid = (m[4] << 8) | m[5]
-                reply = bytes([0x10, m[1], 0x00, m[3], {0x1b04: REPROG_IDX, 0x1a00: PRESENTER_IDX}.get(fid, 0), 0, 2])
+                reply = bytes([0x10, m[1], 0x00, m[3], FEATURES.get(fid, 0), 0, 2])
+            elif m[2] == BATTERY_IDX and function == 0:
+                reply = long_answer(0x5a, 0x4b, 0x00)             # 90 %, next report at 75 %, discharging
+            elif m[2] == SPEED_IDX and function == 0:
+                reply = long_answer(0x14, 0x00)
+            elif m[2] == FIRMWARE_IDX:
+                reply = long_answer(3) if function == 0 else long_answer(0x00, 0x4d, 0x50, 0x4f, 0x01, 0x01, 0x00, 0x32)
             else:                 # acknowledge by echoing, as the real remote does
                 reply = m
             try:
@@ -82,6 +94,11 @@ def run_daemon_tests(h, daemon):
     fake = FakeSpotlight(hid_f)
     fake.start()
     log = open(h.tmp / 'daemon.log', 'wb')
+
+    # the extension's settings come first: the daemon starts later and must be handed them when it appears
+    import ext_features
+    ext_features.set_setting(h, 'pointer-speed', '70')
+    ext_features.set_setting(h, 'vibration-intensity', '100')
     proc = subprocess.Popen([daemon, '--test-fds', ','.join(map(str, daemon_fds)), '--verbose'],
                             pass_fds=daemon_fds, env=dict(os.environ), stdout=log, stderr=subprocess.STDOUT)
     for s in (hid_d, kb_d, mouse_d, key_d):
@@ -130,12 +147,33 @@ def run_daemon_tests(h, daemon):
             return False
         h.check('the daemon is connected to the private test bus', wait(daemon_on_bus) and proc.poll() is None)
 
+        # --- the extension hands its settings to a daemon that starts after it
+        import json
+
+        def daemon(method, params=None):
+            return h.bus.call_sync('org.projecteur.Daemon', '/org/projecteur/Daemon', 'org.projecteur.Daemon1', method, params, None, 0, 3000, None).unpack()
+
+        h.check('a daemon that starts later is handed the extension\'s settings',
+                wait(lambda: json.loads(daemon('GetConfig')[0])['pointer-speed'] == 70), str(daemon('GetConfig')))
+        h.check('...including the vibration strength', json.loads(daemon('GetConfig')[0])['vibration-intensity'] == 100)
+        h.check('...and the connection pulse already uses it (0xff)', wait(lambda: bytes.fromhex('1101091d03e8ff') in [m[:7] for m in fake.requests]))
+        ext_features.set_setting(h, 'pointer-speed', '35')
+        ext_features.set_setting(h, 'vibration-intensity', '50')
+        h.check('a settings change reaches the running daemon', wait(lambda: json.loads(daemon('GetConfig')[0])['pointer-speed'] == 35 and json.loads(daemon('GetConfig')[0])['vibration-intensity'] == 50))
+
+        # --- the panel indicator shows what the daemon knows
+        ind = lambda: ext_features.extension_state(h)['indicator']
+        h.check('indicator: connected over the USB receiver', wait(lambda: ind() and ind()['connection'] == 'Connected over the USB receiver'), str(ind()))
+        h.check('indicator: battery level', ind()['battery'] == 'Battery 90 %', str(ind()))
+        h.check('indicator: firmware version', ind()['firmware'] == 'Firmware 1.1.32', str(ind()))
+        h.check('indicator: no longer dimmed', not ind()['dimmed'])
+
         # --- handshake and the one longer "connected" pulse
         h.check('daemon starts the handshake and diverts the action button with raw X/Y',
                 wait(lambda: bytes.fromhex('1101073d00d833') in [m[:7] for m in fake.requests]))
         h.check('daemon diverts the double click', bytes.fromhex('1101073d00df03') in [m[:7] for m in fake.requests])
         h.check('daemon sends the one longer "connected" pulse (length 3)',
-                wait(lambda: bytes.fromhex('1101091d03e880') in [m[:7] for m in fake.requests]))
+                wait(lambda: any(m[:5] == bytes.fromhex('1101091d03') for m in fake.requests)))
 
         # --- hold and move: the effect appears at the pointer and follows the remote's raw movement
         h.call('Hide')
@@ -203,14 +241,10 @@ def run_daemon_tests(h, daemon):
         h.check('holding Next presses F5', wait(lambda: (keys_after.extend(forwarded_keys()), KEY_F5 in keys_after)[1]), str(keys_after))
 
         # --- the daemon's own D-Bus interface, used by the extension and its settings window
-        def daemon(method, params=None):
-            return h.bus.call_sync('org.projecteur.Daemon', '/org/projecteur/Daemon', 'org.projecteur.Daemon1', method, params, None, 0, 3000, None).unpack()
-
-        import json
         status = json.loads(daemon('GetStatus')[0])
-        h.check('GetStatus: the remote is connected, over the USB receiver', status['connected'] and status['connection'] == 'usb', str(status))
+        h.check('GetStatus: the remote is connected, over the USB receiver, with battery and firmware', status['connected'] and status['connection'] == 'usb' and status['battery']['percent'] == 90 and status['firmware'] == '1.1.32', str(status))
         h.check('GetStatus: the timer is idle', status['timer']['state'] == 'idle', str(status['timer']))
-        h.check('GetConfig returns the reference settings', json.loads(daemon('GetConfig')[0])['pointer-speed'] == 35)
+        h.check('GetConfig returns the settings of the extension', json.loads(daemon('GetConfig')[0])['pointer-speed'] == 35)
         h.check('SetConfig accepts valid settings', daemon('SetConfig', h.GLib.Variant('(s)', (json.dumps({'pointer-speed': 70, 'hold-next-action': 'blank-screen'}),)))[0] == '')
         h.check('SetConfig reports invalid settings', 'pointer-speed' in daemon('SetConfig', h.GLib.Variant('(s)', ('{"pointer-speed": 999}',)))[0])
 

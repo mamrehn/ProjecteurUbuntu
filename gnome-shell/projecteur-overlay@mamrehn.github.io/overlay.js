@@ -32,6 +32,40 @@ export const CAL = {
 
 const TEST_TILE = 80;
 
+/** Colours are written into CSS: only plain #rrggbb is accepted (anything on the session bus can call SetConfig). */
+export const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function clamp(value, min, max, fallback) {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, min), max) : fallback;
+}
+
+/** `rgba(r,g,b,a)` for a validated `#rrggbb`. */
+export function rgba(color, alpha) {
+    const n = parseInt(color.slice(1), 16);
+    return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${alpha})`;
+}
+
+/** Only known keys, numbers inside their range, colours in #rrggbb; everything else is dropped. */
+export function sanitizeConfig(partial) {
+    const out = {};
+    const limits = {contrast: [0, 1], size: [0, 1], zoom: [1, 8]};
+    for (const [mode, values] of Object.entries(partial ?? {})) {
+        if (!MODES.includes(mode) || values === null || typeof values !== 'object')
+            continue;
+        out[mode] = {};
+        for (const [key, value] of Object.entries(values)) {
+            if (key in limits) {
+                const v = clamp(value, limits[key][0], limits[key][1], null);
+                if (v !== null)
+                    out[mode][key] = v;
+            } else if (key === 'color' && typeof value === 'string' && COLOR_PATTERN.test(value)) {
+                out[mode][key] = value.toLowerCase();
+            }
+        }
+    }
+    return out;
+}
+
 /** Colour of test-pattern tile (i, j); the test harness uses the same formula. */
 export function testTileColor(i, j) {
     return [(i * 53 + 40) % 256, (j * 97 + 60) % 256, ((i + j) * 71 + 20) % 256];
@@ -151,10 +185,8 @@ export class Overlay {
 
     /** Merge a partial config, e.g. {magnify: {zoom: 3}}. */
     setConfig(partial) {
-        for (const [mode, values] of Object.entries(partial)) {
-            if (this._cfg[mode])
-                Object.assign(this._cfg[mode], values);
-        }
+        for (const [mode, values] of Object.entries(sanitizeConfig(partial)))
+            Object.assign(this._cfg[mode], values);
         this._sync();
     }
 
@@ -222,9 +254,9 @@ export class Overlay {
         const d = Math.round(core * CAL.laserGlowFactor);
         this._dot.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
         this._dot.set_size(d, d);
-        // solid core out to `core/d` of the radius, then fading to transparent
+        // from the colour at the centre to the same colour, transparent, at the rim (a fixed end colour would tint the edge)
         this._dot.style = `background-gradient-direction: radial; background-gradient-start: ${c.color}; ` +
-            `background-gradient-end: rgba(255,0,0,0); border-radius: ${d}px;`;
+            `background-gradient-end: ${rgba(c.color, 0)}; border-radius: ${d}px;`;
     }
 
     // -- test support (only reachable when the service exposes it) ------------------------------
