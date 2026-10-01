@@ -56,6 +56,17 @@ class TimerTest : public QObject {
     QCOMPARE(fired, (QList<int>{10, 5, 1}));
   }
 
+  void switchedOffAlertSlotsAreIgnored() {   // the settings window keeps three positional slots, 0 = off
+    FakeClock c;
+    PresentationTimer t(c.clock());
+    t.configure(30, {0, 5, 0});
+    QList<int> fired;
+    connect(&t, &PresentationTimer::alert, this, [&](int m) { fired.append(m); });
+    t.start();
+    for (qint64 minute = 1; minute <= 30; ++minute) { c.ms = minute * kMinute; t.tick(); }
+    QCOMPARE(fired, (QList<int>{5}));
+  }
+
   void anAlertBeyondTheTotalTimeIsNeverAnnounced() {
     FakeClock c;
     PresentationTimer t(c.clock());

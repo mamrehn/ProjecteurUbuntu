@@ -13,6 +13,7 @@ import subprocess
 import time
 
 import run as common
+from run import UUID
 
 APP_ID = 'org.projecteur.TestApp'
 SCHEMA = 'org.gnome.shell.extensions.projecteur-overlay'
@@ -168,3 +169,52 @@ def run_extension_tests(h):
     h.check('show-indicator=false removes it', wait(lambda: extension_state(h)['indicator'] is None))
     set_setting(h, 'show-indicator', 'true')
     h.check('and true brings it back', wait(lambda: extension_state(h)['indicator'] is not None))
+
+
+def run_prefs_tests(h):
+    """The settings window as a Wayland client of the headless shell, against the same settings the shell watches."""
+    print('== settings window (the real widgets, driven by tests/headless/prefstest.js)')
+    out = h.tmp / 'prefs-shots'
+    out.mkdir(exist_ok=True)
+    env = dict(isolated_env(h))
+    sockets = sorted(p.name for p in (h.tmp / 'runtime').glob('wayland-*') if not p.name.endswith('.lock'))
+    env.update({'WAYLAND_DISPLAY': sockets[0], 'GDK_BACKEND': 'wayland', 'GSK_RENDERER': 'cairo', 'PREFSTEST_OUT': str(out),
+                'GSETTINGS_SCHEMA_DIR': str(h.ext_dir / 'schemas'), 'GSETTINGS_BACKEND': 'keyfile'})
+    proc = subprocess.run(['gjs', '-m', str(pathlib.Path(__file__).with_name('prefstest.js'))], env=env, capture_output=True, text=True, timeout=180)
+    seen = 0
+    for line in proc.stdout.splitlines():
+        if line.startswith('CHECK '):
+            _, verdict, name = line.split(' ', 2)
+            h.check(f'prefs: {name}', verdict == 'PASS', '')
+            seen += 1
+    h.check('prefs: the scenario ran to the end', 'PREFSTEST OK' in proc.stdout or 'PREFSTEST FAILED' in proc.stdout,
+            (proc.stderr or proc.stdout)[-600:])
+    h.check('prefs: no warnings from GTK or libadwaita', not any(w in proc.stderr for w in ('CRITICAL', 'Gtk-WARNING', 'Adwaita-WARNING', 'Gjs-WARNING', 'JS ERROR')),
+            '; '.join(l for l in proc.stderr.splitlines() if 'WARNING' in l or 'CRITICAL' in l or 'ERROR' in l)[:400])
+    print(f'      {seen} checks, pictures in {out}')
+
+
+def run_real_prefs_test(h):
+    """prefs.js itself, opened the way a user does it: through the shell's Extensions service."""
+    print('== settings window opened through the shell (prefs.js inside the Extensions app)')
+    # the private bus has no desktop session around it: tell the services it starts where the display is
+    sockets = sorted(p.name for p in (h.tmp / 'runtime').glob('wayland-*') if not p.name.endswith('.lock'))
+    h.bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'UpdateActivationEnvironment',
+                    h.GLib.Variant('(a{ss})', ({'WAYLAND_DISPLAY': sockets[0], 'GDK_BACKEND': 'wayland', 'GSK_RENDERER': 'cairo'},)), None, 0, 5000, None)
+    h.bus.call_sync('org.gnome.Shell.Extensions', '/org/gnome/Shell/Extensions', 'org.gnome.Shell.Extensions', 'OpenExtensionPrefs',
+                    h.GLib.Variant('(ssa{sv})', (UUID, '', {})), None, 0, 20000, None)
+
+    def prefs_window():
+        windows = json.loads(h.call('ListWindows')[0])
+        return [w for w in windows if (w.get('appId') or '').startswith('org.gnome.Shell.Extensions') or w.get('wmClass', '').startswith('org.gnome.Shell.Extensions')]
+
+    opened = wait(lambda: bool(prefs_window()), 30)
+    h.check('the Extensions app shows a window for the extension', opened, json.dumps(json.loads(h.call('ListWindows')[0])))
+    if opened:
+        time.sleep(2.5)
+        s = h.shot('prefs-through-shell')
+        # the window is drawn: the screen is not the plain test pattern or empty black any more
+        centre = [s.px(x, y) for x in range(300, 1000, 100) for y in range(100, 600, 100)]
+        h.check('the window has content (not blank)', len(set(centre)) > 3, str(centre[:4]))
+        h.check('no errors from the extension or its settings window in the shell log',
+                not [l for l in (h.tmp / 'shell.log').read_text(errors='replace').splitlines() if 'projecteur-overlay' in l and 'JS ERROR' in l])

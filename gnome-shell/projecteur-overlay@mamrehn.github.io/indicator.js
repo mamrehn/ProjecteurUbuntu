@@ -5,39 +5,7 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-/** "mm:ss", or "h:mm:ss" from an hour on. */
-export function formatTime(seconds) {
-    const s = Math.max(0, Math.round(seconds));
-    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
-    const two = n => String(n).padStart(2, '0');
-    return h > 0 ? `${h}:${two(m)}:${two(r)}` : `${two(m)}:${two(r)}`;
-}
-
-/** The text lines of the menu for a daemon status (null: the daemon is not running). Pure, tested on its own. */
-export function describeStatus(status) {
-    if (!status)
-        return {connection: 'Daemon not running', battery: '', firmware: '', timer: '', label: ''};
-    const connection = status.connected
-        ? `Connected over ${status.connection === 'bluetooth' ? 'Bluetooth' : 'the USB receiver'}`
-        : 'Remote not connected';
-    let battery = '';
-    if (status.battery) {
-        const b = status.battery;
-        battery = `Battery ${b.percent} %${b.charging ? ' (charging)' : ''}`;
-    }
-    const firmware = status.firmware ? `Firmware ${status.firmware}` : '';
-    const t = status.timer;
-    let timer = '', label = '';
-    if (t?.enabled || (t && t.state !== 'idle')) {
-        const names = {idle: 'ready', running: 'running', paused: 'paused', finished: 'time is up'};
-        timer = `Timer ${formatTime(t.remaining)} (${names[t.state] ?? t.state})`;
-        if (t.state === 'running' || t.state === 'paused')
-            label = formatTime(t.remaining);
-        else if (t.state === 'finished')
-            label = '0:00';
-    }
-    return {connection, battery, firmware, timer, label};
-}
+import {describeStatus} from './statusText.js';
 
 export const Indicator = GObject.registerClass(
 class ProjecteurIndicator extends PanelMenu.Button {

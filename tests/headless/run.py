@@ -32,9 +32,26 @@ DIM_MULTIPLIER = 1 - 0.8875 * 0.80          # contrast 80 % -> screen drawn at 2
 
 
 def outer():
-    """Re-exec inside a private session bus so the real one is never used."""
-    os.execvp('dbus-run-session',
-              ['dbus-run-session', '--', sys.executable, os.path.abspath(__file__), '--inner'] + sys.argv[1:])
+    """Re-exec inside a private session bus, with a private HOME and XDG directories for the WHOLE process tree.
+
+    Not only the shell: everything the private bus activates on demand (the evolution data server, online accounts,
+    portals, the Extensions app, ...) inherits this environment, so none of it can read or write the real user's files
+    or settings. GSETTINGS_BACKEND=keyfile keeps every setting out of the real dconf database.
+    """
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix='pj-headless-'))
+    for d in ('home', 'config/glib-2.0/settings', 'data/gnome-shell/extensions', 'cache', 'state', 'runtime'):
+        (tmp / d).mkdir(parents=True, exist_ok=True)
+    (tmp / 'runtime').chmod(0o700)
+    env = dict(os.environ)
+    for k in ('WAYLAND_DISPLAY', 'DISPLAY', 'GNOME_SETUP_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE'):
+        env.pop(k, None)
+    env.update({
+        'HOME': str(tmp / 'home'), 'XDG_CONFIG_HOME': str(tmp / 'config'), 'XDG_DATA_HOME': str(tmp / 'data'),
+        'XDG_CACHE_HOME': str(tmp / 'cache'), 'XDG_STATE_HOME': str(tmp / 'state'), 'XDG_RUNTIME_DIR': str(tmp / 'runtime'),
+        'GSETTINGS_BACKEND': 'keyfile', 'PJ_HEADLESS_TMP': str(tmp),
+    })
+    os.execvpe('dbus-run-session',
+               ['dbus-run-session', '--', sys.executable, os.path.abspath(__file__), '--inner'] + sys.argv[1:], env)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -76,7 +93,7 @@ class Harness:
         from gi.repository import Gio, GLib
         self.Gio, self.GLib = Gio, GLib
         self.keep = keep
-        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix='pj-headless-'))
+        self.tmp = pathlib.Path(os.environ['PJ_HEADLESS_TMP'])   # made by outer(), together with the isolated environment
         self.results = []
         self.proc = None
         self.bus = None
@@ -85,9 +102,8 @@ class Harness:
     def start(self):
         Gio, GLib = self.Gio, self.GLib
         t = self.tmp
-        for d in ('home', 'config/glib-2.0/settings', 'data/gnome-shell/extensions', 'cache', 'runtime'):
-            (t / d).mkdir(parents=True, exist_ok=True)
-        (t / 'runtime').chmod(0o700)
+        # safety net: if this process was not started through outer(), it must not run on the real home
+        assert str(t / 'home') == os.environ.get('HOME') and str(t / 'runtime') == os.environ.get('XDG_RUNTIME_DIR'), 'environment is not isolated'
         # a copy, not a link: the schema is compiled next to it, and the repository stays clean
         self.ext_dir = t / 'data/gnome-shell/extensions' / UUID
         shutil.copytree(EXT_SRC, self.ext_dir)
@@ -363,6 +379,10 @@ def run_tests(h):
 
     from ext_features import run_extension_tests
     run_extension_tests(h)
+    from ext_features import run_prefs_tests
+    run_prefs_tests(h)
+    from ext_features import run_real_prefs_test
+    run_real_prefs_test(h)
 
     if h.daemon:
         from daemon_e2e import run_daemon_tests

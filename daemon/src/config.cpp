@@ -154,7 +154,7 @@ Config Config::fromJson(const QJsonObject& json, const Config& base, QStringList
     else if (key == QLatin1String("timer-enabled")) readBool(v, &c.timerEnabled, key, problems);
     else if (key == QLatin1String("timer-minutes")) readInt(v, 1, kMaxTimerMinutes, &c.timerMinutes, key, problems);
     else if (key == QLatin1String("timer-auto-start")) readBool(v, &c.timerAutoStart, key, problems);
-    else if (key == QLatin1String("timer-alerts")) readIntList(v, 1, kMaxTimerMinutes, kMaxAlerts, &c.timerAlerts, key, problems);
+    else if (key == QLatin1String("timer-alerts")) readIntList(v, 0, kMaxTimerMinutes, kMaxAlerts, &c.timerAlerts, key, problems);
     // everything else (appearance, profiles, ...) is for other consumers of the same settings: ignored on purpose
   }
   return c;

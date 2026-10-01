@@ -29,6 +29,7 @@ const IFACE_XML = `
     <method name="TestPattern"><arg type="b" direction="in" name="on"/></method>
     <method name="StageChildCount"><arg type="i" direction="out" name="count"/></method>
     <method name="ExtensionState"><arg type="s" direction="out" name="json"/></method>
+    <method name="ListWindows"><arg type="s" direction="out" name="json"/></method>
     <method name="PickAt"><arg type="d" direction="in" name="x"/><arg type="d" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     ` : ''}
   </interface>
@@ -76,4 +77,7 @@ export class OverlayService {
     PickAt(x, y) { return this._overlay.pickAt(x, y); }
     StageChildCount() { return global.stage.get_n_children(); }
     ExtensionState() { return JSON.stringify(this._extensionState()); }
+    ListWindows() {
+        return JSON.stringify(global.get_window_actors().map(a => ({title: a.meta_window.get_title(), wmClass: a.meta_window.get_wm_class(), appId: a.meta_window.get_gtk_application_id()})));
+    }
 }

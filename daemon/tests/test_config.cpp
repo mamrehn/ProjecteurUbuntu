@@ -73,6 +73,15 @@ class ConfigTest : public QObject {
     QCOMPARE(c, Config{});   // nothing changed
   }
 
+  void alertSlotsMayBeSwitchedOffWithZero() {
+    QStringList problems;
+    const Config c = Config::fromJson(QJsonObject{{"timer-alerts", QJsonArray{0, 5, 0}}}, Config{}, &problems);
+    QVERIFY(problems.isEmpty());
+    QCOMPARE(c.timerAlerts, (QList<int>{0, 5, 0}));
+    QVERIFY(!Config::fromJson(QJsonObject{{"timer-alerts", QJsonArray{-1}}}, Config{}, &problems).timerAlerts.contains(-1));
+    QVERIFY(!problems.isEmpty());
+  }
+
   void unknownKeysAreIgnoredSilently() {   // the extension sends its appearance settings along
     QStringList problems;
     const Config c = Config::fromJson(QJsonObject{{"highlight-size", 43}, {"laser-color", "#ff0000"}, {"cursor-control", true}}, Config{}, &problems);

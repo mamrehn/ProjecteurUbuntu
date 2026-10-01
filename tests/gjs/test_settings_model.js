@@ -5,7 +5,8 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import System from 'system';
 
-import {KEYS, HOLD_ACTIONS, defaults, validValue, parseProfiles, effectiveValues, daemonConfig, overlayConfig, isProfileKey}
+import {KEYS, HOLD_ACTIONS, defaults, validValue, parseProfiles, effectiveValues, daemonConfig, overlayConfig, isProfileKey,
+    addProfile, removeProfile, setOverride, clearOverride, serializeProfiles, alertsToSlots, slotsToAlerts, isModifierCode}
     from '../../gnome-shell/projecteur-overlay@mamrehn.github.io/settingsModel.js';
 
 let failures = 0;
@@ -80,6 +81,32 @@ check('the daemon does not get appearance or extension settings', !('laser-color
 const o = overlayConfig(base);
 check('the overlay gets fractions', o.highlight.contrast === 0.8 && o.highlight.size === 0.43 && o.magnify.size === 0.8 && o.laser.size === 0.12);
 check('and colours', o.magnify.color === '#00f8be' && o.laser.color === '#ff0000');
+
+print('== editing profiles');
+let p = addProfile({}, 'a.desktop');
+check('adding a profile', eq(p, {'a.desktop': {}}));
+check('adding it again changes nothing', addProfile(p, 'a.desktop') === p);
+const p2 = setOverride(p, 'a.desktop', 'pointer-speed', 60);
+check('an override is stored', eq(p2, {'a.desktop': {'pointer-speed': 60}}));
+check('the input was not modified', eq(p, {'a.desktop': {}}));
+check('an invalid value is refused', setOverride(p2, 'a.desktop', 'pointer-speed', 500) === p2);
+check('a key that is not a profile setting is refused', setOverride(p2, 'a.desktop', 'show-indicator', false) === p2 && setOverride(p2, 'a.desktop', 'profiles', '{}') === p2);
+check('an unknown key is refused', setOverride(p2, 'a.desktop', 'nonsense', 1) === p2);
+const p3 = setOverride(p2, 'b.desktop', 'freeze-effects', false);
+check('profiles of several applications', eq(p3, {'a.desktop': {'pointer-speed': 60}, 'b.desktop': {'freeze-effects': false}}));
+check('clearing an override', eq(clearOverride(p3, 'a.desktop', 'pointer-speed'), {'a.desktop': {}, 'b.desktop': {'freeze-effects': false}}));
+check('clearing what is not there changes nothing', clearOverride(p3, 'a.desktop', 'laser-size') === p3 && clearOverride(p3, 'c.desktop', 'laser-size') === p3);
+check('removing a profile', eq(removeProfile(p3, 'a.desktop'), {'b.desktop': {'freeze-effects': false}}));
+check('what the window writes, the extension reads back', eq(parseProfiles(serializeProfiles(p3)), p3));
+const listProfile = setOverride({}, 'a.desktop', 'hold-next-shortcut', [29, 42, 25]);
+check('a list value is copied', eq(listProfile, {'a.desktop': {'hold-next-shortcut': [29, 42, 25]}}));
+
+print('== timer alert slots');
+check('slots from alerts', eq(alertsToSlots([5]), [5, 0, 0]) && eq(alertsToSlots([10, 5, 1]), [10, 5, 1]) && eq(alertsToSlots([]), [0, 0, 0]));
+check('alerts from slots keep their positions (a row being edited must not move)', eq(slotsToAlerts([0, 5, 10]), [0, 5, 10]) && eq(slotsToAlerts([0, 0, 0]), [0, 0, 0]));
+check('slots are clamped and made whole', eq(slotsToAlerts([-3, 1000, 2.5]), [0, 600, 0]));
+check('a list with zeros is a valid timer-alerts value, one with a fourth slot or a value over 600 is not', validValue('timer-alerts', [0, 5, 0]) && !validValue('timer-alerts', [1, 2, 3, 4]) && !validValue('timer-alerts', [601]));
+check('modifier codes', isModifierCode(29) && isModifierCode(42) && isModifierCode(125) && !isModifierCode(25));
 
 print(failures ? `FAILED: ${failures}` : 'all checks passed');
 System.exit(failures ? 1 : 0);

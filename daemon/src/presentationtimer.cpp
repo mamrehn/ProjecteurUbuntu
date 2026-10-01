@@ -37,6 +37,7 @@ void PresentationTimer::setState(State s) {
 }
 
 void PresentationTimer::configure(int minutes, QList<int> alertMinutes) {
+  alertMinutes.removeIf([](int m) { return m <= 0; });   // a slot that is off
   std::sort(alertMinutes.begin(), alertMinutes.end(), std::greater<int>());
   alerts_ = alertMinutes;
   if (state_ == State::Idle || state_ == State::Finished) {

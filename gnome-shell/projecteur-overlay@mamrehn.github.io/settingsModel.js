@@ -26,7 +26,7 @@ export const KEYS = {
     'timer-enabled': {type: 'b', def: false, scope: 'daemon'},
     'timer-minutes': {type: 'i', def: 30, min: 1, max: 600, scope: 'daemon'},
     'timer-auto-start': {type: 'b', def: true, scope: 'daemon'},
-    'timer-alerts': {type: 'ai', def: [5], scope: 'daemon'},
+    'timer-alerts': {type: 'ai', def: [5], itemMax: 600, scope: 'daemon'},   // up to three slots, minutes before the end; 0 = off
     'timer-notification': {type: 'b', def: true, scope: 'daemon'},
     // not part of a profile
     'show-indicator': {type: 'b', def: true, scope: 'extension', profile: false},
@@ -60,7 +60,7 @@ export function validValue(key, value) {
             return typeof value === 'string' && COLOR_PATTERN.test(value);
         return typeof value === 'string' && (!k.choices || k.choices.includes(value));
     case 'ai':
-        return Array.isArray(value) && value.length <= 6 && value.every(x => Number.isInteger(x) && x >= 0);
+        return Array.isArray(value) && value.length <= (k.itemMax ? 3 : 6) && value.every(x => Number.isInteger(x) && x >= 0 && (!k.itemMax || x <= k.itemMax));
     }
     return false;
 }
@@ -117,4 +117,57 @@ export function overlayConfig(values) {
         magnify: {size: values['magnify-size'] / 100, color: color('magnify-color')},
         laser: {size: values['laser-size'] / 100, color: color('laser-color')},
     };
+}
+
+// -- editing profiles (used by the settings window) ----------------------------------------------------
+// All functions return a new profiles object; the input is never modified.
+
+export function addProfile(profiles, appId) {
+    return appId in profiles ? profiles : {...profiles, [appId]: {}};
+}
+
+export function removeProfile(profiles, appId) {
+    const out = {...profiles};
+    delete out[appId];
+    return out;
+}
+
+/** Give `appId` its own value for `key`. Invalid keys and values are refused (the profile stays as it was). */
+export function setOverride(profiles, appId, key, value) {
+    if (!isProfileKey(key) || !validValue(key, value))
+        return profiles;
+    return {...profiles, [appId]: {...(profiles[appId] ?? {}), [key]: Array.isArray(value) ? [...value] : value}};
+}
+
+/** Back to the general value for `key`. */
+export function clearOverride(profiles, appId, key) {
+    if (!profiles[appId] || !(key in profiles[appId]))
+        return profiles;
+    const rest = {...profiles[appId]};
+    delete rest[key];
+    return {...profiles, [appId]: rest};
+}
+
+export function serializeProfiles(profiles) {
+    return JSON.stringify(profiles);
+}
+
+/** A key code list ([29, 42, 25]) as the names of the keys' roles: used to decide whether a chord is usable. */
+export const MODIFIER_CODES = [29, 97, 42, 54, 56, 100, 125, 126];   // ctrl, shift, alt, alt gr, super (left and right)
+export function isModifierCode(code) {
+    return MODIFIER_CODES.includes(code);
+}
+
+/**
+ * The timer alerts are three slots of minutes before the end, 0 = off. The positions stay as the user set them (a slot
+ * that is being edited must not jump to another row); the daemon ignores the zeros and sorts the rest.
+ */
+export function alertsToSlots(alerts) {
+    const slots = [0, 0, 0];
+    alerts.slice(0, 3).forEach((m, i) => { slots[i] = m; });
+    return slots;
+}
+
+export function slotsToAlerts(slots) {
+    return [0, 1, 2].map(i => (Number.isInteger(slots[i]) && slots[i] > 0 ? Math.min(slots[i], 600) : 0));
 }
