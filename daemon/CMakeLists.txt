@@ -9,6 +9,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(projecteurd VERSION 0.1.0 LANGUAGES CXX)
 
+# The version the daemon reports (--version, GetStatus). The package build passes its own, so a bug report names the build.
+set(PROJECTEURD_VERSION "${PROJECT_VERSION}" CACHE STRING "version reported by the daemon")
+add_compile_definitions(PROJECTEURD_VERSION="${PROJECTEURD_VERSION}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)

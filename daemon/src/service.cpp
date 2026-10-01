@@ -65,7 +65,7 @@ QString Service::configJson() const { return QString::fromUtf8(QJsonDocument(con
 
 QString Service::statusJson() const {
   QJsonObject o;
-  o[QStringLiteral("version")] = QStringLiteral("0.1.0");
+  o[QStringLiteral("version")] = QStringLiteral(PROJECTEURD_VERSION);
   const bool connected = remote_ && remote_->device()->isReady();
   o[QStringLiteral("connected")] = connected;
   o[QStringLiteral("connection")] = !remote_ ? QString() : remote_->isBluetooth() ? QStringLiteral("bluetooth") : QStringLiteral("usb");

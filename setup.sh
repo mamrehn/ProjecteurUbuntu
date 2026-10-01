@@ -94,21 +94,11 @@ install_build_deps() {
   sudo apt-get install -y "${missing[@]}"
 }
 
-# A version that grows with every commit: apt keeps the installed package when a rebuild has the same version number,
-# so a fixed "0.1.0" would make a second ./setup.sh silently install nothing. Uncommitted changes get a timestamp.
-package_version() {
-  local count sha dirty=""
-  count="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
-  sha="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then dirty=".$(date +%Y%m%d%H%M%S)"; fi
-  printf '0.1.0+git%s.%s%s' "$count" "$sha" "$dirty"
-}
-
 build_deb() {
   install_build_deps
   BUILD_TMP="$(mktemp -d)"
   chmod 755 "$BUILD_TMP"     # apt runs its download step as the user _apt, which must be able to read the file
-  local version; version="$(package_version)"
+  local version; version="$(packaging/version.sh)"   # grows with every commit: apt keeps an installed package of the same number
   packaging/build-deb.sh "$version" "$BUILD_TMP" >&2 || die "building the package failed"
   DEB="$(ls "$BUILD_TMP"/${PKG}_*.deb)"
   ok "built $(basename "$DEB")"

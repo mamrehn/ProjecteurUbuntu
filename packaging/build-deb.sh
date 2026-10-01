@@ -18,7 +18,8 @@ stage="$work/root"
 
 echo "== build"
 cmake -S daemon -B "$work/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-      -DCMAKE_CXX_FLAGS="-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,relro,-z,now" >/dev/null
+      -DCMAKE_CXX_FLAGS="-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,relro,-z,now" \
+      -DPROJECTEURD_VERSION="$version" >/dev/null
 cmake --build "$work/build" --target projecteurd
 DESTDIR="$stage" cmake --install "$work/build" >/dev/null
 strip --strip-unneeded "$stage/usr/bin/projecteurd"

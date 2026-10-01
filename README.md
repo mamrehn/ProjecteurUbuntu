@@ -23,14 +23,29 @@ Not included (by decision): cloud backup of settings, firmware update.
 
 ## Install
 
+**From a release** (no build tools needed; Ubuntu 26.04, GNOME 50, Wayland, 64-bit): download
+`projecteur-gnome_<version>_amd64.deb` and `SHA256SUMS` from the
+[latest release](https://github.com/mamrehn/ProjecteurUbuntu/releases/latest), then
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+sudo apt install ./projecteur-gnome_*_amd64.deb
+projecteur-setup enable
+```
+
+**From source** (builds the same package from this checkout):
+
 ```bash
 git clone https://github.com/mamrehn/ProjecteurUbuntu && cd ProjecteurUbuntu
 ./setup.sh --enable        # builds the package, installs it with sudo apt, switches it on for you
 ```
 
-Then **log out and in once** (GNOME Shell on Wayland only notices a new extension at login). Settings:
+Either way, **log out and in once** (GNOME Shell on Wayland only notices a new extension at login). Settings:
 `gnome-extensions prefs projecteur-overlay@mamrehn.github.io`, or the Extensions app. `./setup.sh --check` diagnoses
-and changes nothing; `./setup.sh --uninstall` removes everything. The package replaces Ubuntu's Qt5 `projecteur`
+and changes nothing; `./setup.sh --uninstall` removes everything (for a release install: `sudo apt remove projecteur-gnome`).
+GitHub Actions builds, tests and smoke-tests the package on Ubuntu 26.04 for every push to `main`
+(`.github/workflows/gnome-deb.yml`); the build of a commit is a download in the run's "Artifacts" (login required).
+A release is made by pushing a tag `gnome-vX.Y.Z`. The package replaces Ubuntu's Qt5 `projecteur`
 package (the two cannot run together). Without `--enable` nothing is switched on: run `projecteur-setup enable` later.
 
 If anything misbehaves, `projecteur-setup disable` returns the remote to a plain keyboard and mouse at once.
@@ -44,8 +59,9 @@ the extension; two monitors of different sizes, 1.5x on 1080p, mixed 1.25x / 1.3
 on one remote: Next/Back, the action button, hold and double click, raw movement (49.5 counts per degree of turn), held
 Next/Back, battery, firmware, vibration, over **Bluetooth** and the **USB receiver**.
 
-**Not verified yet:** the extension in a real desktop session (so far only in throwaway headless shells, on purpose:
-an extension runs inside the compositor, and a bug there can freeze the desktop); AMD and NVIDIA graphics (only an
+**Used for real:** the maintainer installed the package in their own desktop session (Intel graphics, one remote) and
+reports that it works. **Not verified yet:** any other machine (an extension runs inside the compositor, and a bug
+there can freeze the desktop, which is why the tests use throwaway headless shells); AMD and NVIDIA graphics (only an
 Intel iGPU was available); what Windows does on several monitors (this fork dims and magnifies the monitor the effect is
 on); timing of the hold actions against the Windows app; the Spotlight 2, which is not supported. Details and the
 input measurements: [doc/ubuntu/INPUT-MODEL.md](doc/ubuntu/INPUT-MODEL.md), plan: [doc/ubuntu/PLAN.md](doc/ubuntu/PLAN.md).

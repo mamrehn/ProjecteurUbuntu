@@ -1,9 +1,11 @@
 # Plan: Logitech Spotlight for Ubuntu 26.04 (GNOME 50, Wayland, Qt6)
 
-Status (2026-10-01): **M0 to M6 are done and tested without a real desktop session; M7 (hardening) is partly done.**
-The daemon, the GNOME Shell extension, the settings window and the package exist and pass `tests/run-all.sh`. What is
-**not** done: the extension has never run in the maintainer's real session (only in isolated headless shells), AMD and
-NVIDIA graphics are untested, and a clean-system install of the package was not tested (disk full during the attempt).
+Status (2026-10-01): **M0 to M6 are done; M7 (hardening) is partly done.**
+The daemon, the GNOME Shell extension, the settings window and the package exist and pass `tests/run-all.sh`; the
+package installs on a clean Ubuntu 26.04 (container test), and the maintainer installed it in their real session on the
+same day and reports that it works. What is **not** done: AMD and NVIDIA graphics, other machines, Teams/Zoom screen
+sharing. GitHub Actions builds, tests and smoke-tests the `.deb` on every push to `main` and publishes a release for a
+tag `gnome-vX.Y.Z` (`.github/workflows/gnome-deb.yml`).
 Feature list: [FEATURE-PARITY.md](FEATURE-PARITY.md). What the remote sends: [INPUT-MODEL.md](INPUT-MODEL.md).
 The first version of the plan follows; the table of milestones has the current state.
 

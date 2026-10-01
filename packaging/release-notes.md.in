@@ -1,0 +1,22 @@
+Logitech Spotlight (original, USB receiver or Bluetooth) on **Ubuntu 26.04 with GNOME Shell 50 on Wayland**: highlight,
+live magnifier and laser pointer drawn inside GNOME Shell, held Next/Back actions, presentation timer with vibration
+alerts, battery, per-application profiles and a settings window.
+
+## Install
+
+```bash
+sudo apt install ./@DEB@
+projecteur-setup enable
+```
+
+Then **log out and in once**: GNOME Shell on Wayland only sees a new extension at login. Settings: the Extensions app,
+"Projecteur Overlay". The package replaces Ubuntu's Qt5 `projecteur` package. If anything misbehaves,
+`projecteur-setup disable` makes the remote a plain keyboard and mouse again.
+
+Check the download: `sha256sum -c SHA256SUMS` in the folder with both files.
+
+## Know before you install
+
+An extension runs inside the desktop, so a bug can freeze it. This has been used in one real session (Intel graphics,
+one remote) and tested automatically in isolated headless GNOME Shells; AMD and NVIDIA graphics, the Spotlight 2 and
+screen sharing in Teams or Zoom are untested. Details: README, section "What was verified, and what was not".

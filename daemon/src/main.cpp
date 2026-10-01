@@ -34,7 +34,7 @@ void onSignal(int) {
 int main(int argc, char** argv) {
   QCoreApplication app(argc, argv);
   QCoreApplication::setApplicationName(QStringLiteral("projecteurd"));
-  QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+  QCoreApplication::setApplicationVersion(QStringLiteral(PROJECTEURD_VERSION));
   qSetMessagePattern(QStringLiteral("%{time hh:mm:ss.zzz} [%{category}] %{message}"));
 
   QCommandLineParser parser;

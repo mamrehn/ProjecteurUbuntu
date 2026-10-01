@@ -1,0 +1,119 @@
+name: gnome-deb
+
+# Builds projecteur-gnome (the daemon + the GNOME Shell extension) as a .deb for Ubuntu 26.04.
+#
+#   push to main / pull request / manual   test, build, smoke-test; the .deb is kept as a build artifact for 30 days
+#   tag gnome-vX.Y.Z                       the same, and then a public GitHub release with the .deb and SHA256SUMS
+#
+# The tag prefix is deliberate: the inherited upstream workflows (ci-build, release) react to v* tags.
+#
+# What a release is made of is decided by the tag:   git tag gnome-v0.2.0 && git push origin gnome-v0.2.0
+
+on:
+  push:
+    branches: [main]
+    tags: ['gnome-v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: gnome-deb-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  LC_ALL: C.UTF-8
+
+jobs:
+  build:
+    name: build, test and package on Ubuntu 26.04
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The package depends on the libraries of Ubuntu 26.04 (Qt 6.10), so it is built there, not on the runner's own image.
+    container:
+      image: ubuntu:26.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Install git (needed to check out the history)
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the version counts commits and looks for release tags
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version="$(packaging/version.sh)"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [[ "$GITHUB_REF_NAME" =~ ^gnome-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::a release tag looks like gnome-v1.2.3, not $GITHUB_REF_NAME"; exit 1; }
+            [ "$version" = "${GITHUB_REF_NAME#gnome-v}" ] || { echo "::error::tag $GITHUB_REF_NAME, but the version script says $version"; exit 1; }
+            git merge-base --is-ancestor HEAD origin/main || { echo "::error::the tagged commit is not on main"; exit 1; }
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Package version: $version"
+
+      - name: Install build tools
+        run: >
+          apt-get install -y -qq --no-install-recommends
+          g++ make cmake ninja-build pkg-config qt6-base-dev dpkg-dev fakeroot libglib2.0-bin binutils dbus
+
+      - name: Daemon unit tests
+        run: |
+          cmake -S daemon -B build/daemon -G Ninja
+          cmake --build build/daemon
+          ctest --test-dir build/daemon --output-on-failure
+
+      - name: Build the package
+        run: packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Smoke-test the package on a clean system
+        run: packaging/smoke-test.sh dist/*.deb
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- *.deb | tee SHA256SUMS
+
+      - name: Keep the package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: projecteur-gnome-deb
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: publish the GitHub release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: projecteur-gnome-deb
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          deb="projecteur-gnome_${VERSION}_amd64.deb"
+          test -f "dist/$deb"
+          (cd dist && sha256sum -c SHA256SUMS)
+          sed "s/@DEB@/$deb/g" packaging/release-notes.md.in > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Projecteur for GNOME $VERSION" --notes-file notes.md
