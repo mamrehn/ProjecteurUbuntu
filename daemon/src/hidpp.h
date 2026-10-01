@@ -11,7 +11,8 @@
 /// Only what the daemon needs; see doc/ubuntu/INPUT-MODEL.md for how each message was measured.
 namespace projecteur::hidpp {
 
-constexpr uint8_t kDeviceIndex = 0x01;  ///< the remote behind the USB receiver
+constexpr uint8_t kDeviceIndex = 0x01;        ///< the remote behind the USB receiver
+constexpr uint8_t kDirectDeviceIndex = 0xff;  ///< a remote connected directly (Bluetooth)
 constexpr uint8_t kSoftwareId = 0x0d;   ///< low nibble of byte 3 in our requests
 
 enum class Feature : uint16_t {
@@ -31,7 +32,9 @@ constexpr uint8_t kDivertWithRawXY = 0x33;
 constexpr uint8_t kUndivert = 0x22;
 
 // --- requests ----------------------------------------------------------------------------------
-QByteArray getFeatureIndex(Feature f, uint8_t dev = kDeviceIndex);                        // short, 7 bytes
+/// Short (7 bytes) by default; `longForm` builds the 20 byte variant that the Bluetooth hidraw node requires
+/// (its descriptor declares only report 0x11).
+QByteArray getFeatureIndex(Feature f, uint8_t dev = kDeviceIndex, bool longForm = false);
 QByteArray setCidReporting(uint8_t featureIndex, uint16_t cid, uint8_t flags, uint8_t dev = kDeviceIndex);  // long, 20
 /// Vibration. length 0 is NOT felt on the original Spotlight; 1 is a short pulse.
 QByteArray vibrate(uint8_t featureIndex, uint8_t length, uint8_t intensity, uint8_t dev = kDeviceIndex);   // long, 20

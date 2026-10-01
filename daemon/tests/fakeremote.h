@@ -32,6 +32,7 @@ class FakeRemote : public QObject {
   }
 
   int ignoreFirst = 0;         ///< a sleeping remote does not answer the first requests
+  bool longOnly = false;       ///< Bluetooth: short (7 byte) reports are not accepted
   QList<QByteArray> requests;  ///< everything received, answered or not
 
  private:
@@ -42,6 +43,7 @@ class FakeRemote : public QObject {
       if (n <= 0) return;  // nothing more to read (or the other side closed)
       const QByteArray m(buf, static_cast<qsizetype>(n));
       requests.append(m);
+      if (longOnly && m.size() != 20) continue;  // the kernel rejects short reports on the Bluetooth node: no answer
       if (ignoreFirst > 0) {
         --ignoreFirst;
         continue;
@@ -51,6 +53,8 @@ class FakeRemote : public QObject {
         const int id = (static_cast<uint8_t>(m[4]) << 8) | static_cast<uint8_t>(m[5]);
         reply = QByteArray::fromHex("1001000d000002");
         reply[4] = static_cast<char>(id == 0x1b04 ? 0x07 : id == 0x1a00 ? 0x09 : 0x00);
+        reply[1] = m[1];                                  // same device index as asked (0xff over Bluetooth)
+        if (m.size() == 20) { reply[0] = 0x11; reply.resize(20); }  // a long request gets a long answer
       }
       // the daemon may already have closed its end (shutdown): answering then fails, which is fine
       const ssize_t w = ::write(fd_, reply.constData(), static_cast<size_t>(reply.size()));

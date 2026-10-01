@@ -9,6 +9,8 @@
 #include <QTextStream>
 #include <fcntl.h>
 
+#include "hidpp.h"
+
 Q_LOGGING_CATEGORY(lcDiscovery, "projecteur.discovery")
 
 namespace projecteur {
@@ -47,6 +49,42 @@ SpotlightNodes findUsbReceiver(const QString& procInputDevices, const QString& s
   return nodes;
 }
 
+SpotlightNodes findBluetoothSpotlight(const QString& procInputDevices, const QString& sysHidraw, const QString& devDir) {
+  SpotlightNodes nodes;
+  nodes.bluetooth = true;
+  static const QRegularExpression vendor(QStringLiteral("Vendor=046d Product=b503"), QRegularExpression::CaseInsensitiveOption);
+  static const QRegularExpression name(QStringLiteral("^N: Name=\"([^\"]*)\"$"), QRegularExpression::MultilineOption);
+  static const QRegularExpression event(QStringLiteral("\\bevent(\\d+)\\b"));
+  for (const QString& block : procInputDevices.split(QStringLiteral("\n\n"))) {
+    if (!vendor.match(block).hasMatch()) continue;
+    const auto n = name.match(block);
+    const auto e = event.match(block);
+    if (!n.hasMatch() || !e.hasMatch()) continue;
+    const QString path = devDir + QStringLiteral("/input/event") + e.captured(1);
+    if (n.captured(1) == QStringLiteral("SPOTLIGHT Keyboard")) nodes.keyboard = path;
+    else if (n.captured(1) == QStringLiteral("SPOTLIGHT Mouse")) nodes.mouse = path;
+  }
+  const QDir hidrawClass(sysHidraw);
+  for (const QString& entry : hidrawClass.entryList({QStringLiteral("hidraw*")}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+    const QString device = QFileInfo(hidrawClass.filePath(entry + QStringLiteral("/device"))).canonicalFilePath();
+    QFile uevent(device + QStringLiteral("/uevent"));
+    if (device.isEmpty() || !uevent.open(QIODevice::ReadOnly)) continue;
+    if (QString::fromLatin1(uevent.readAll()).toUpper().contains(QStringLiteral("0005:0000046D:0000B503"))) {
+      nodes.hidraw = devDir + QLatin1Char('/') + entry;
+      break;
+    }
+  }
+  return nodes;
+}
+
+SpotlightNodes findSpotlight() {
+  QFile f(QStringLiteral("/proc/bus/input/devices"));
+  if (!f.open(QIODevice::ReadOnly)) return {};
+  const QString text = QString::fromUtf8(f.readAll());
+  const SpotlightNodes usb = findUsbReceiver(text);
+  return usb.complete() ? usb : findBluetoothSpotlight(text);
+}
+
 SpotlightNodes findUsbReceiver() {
   QFile f(QStringLiteral("/proc/bus/input/devices"));
   if (!f.open(QIODevice::ReadOnly)) return {};
@@ -65,7 +103,7 @@ void RemoteWatcher::start(int intervalMs) {
 
 void RemoteWatcher::poll() {
   if (remote_) return;
-  const SpotlightNodes nodes = findUsbReceiver();
+  const SpotlightNodes nodes = findSpotlight();
   if (!nodes.complete()) return;
 
   const int hidraw = ::open(nodes.hidraw.toLocal8Bit().constData(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -79,8 +117,14 @@ void RemoteWatcher::poll() {
       if (fd >= 0) ::close(fd);
     return;
   }
-  qCInfo(lcDiscovery).noquote() << "Spotlight receiver found:" << nodes.hidraw << nodes.keyboard << nodes.mouse;
-  remote_ = new Remote({hidraw, keyboard, mouse}, keys_, overlay_, options_, this);
+  qCInfo(lcDiscovery).noquote() << (nodes.bluetooth ? "Bluetooth Spotlight found:" : "Spotlight receiver found:") << nodes.hidraw
+                                << nodes.keyboard << nodes.mouse;
+  Remote::Options options = options_;
+  if (nodes.bluetooth) {                 // directly connected: device index 0xff, the hidraw node takes 20 byte reports only
+    options.device.deviceIndex = hidpp::kDirectDeviceIndex;
+    options.device.longMessagesOnly = true;
+  }
+  remote_ = new Remote({hidraw, keyboard, mouse}, keys_, overlay_, options, this);
   connect(remote_, &Remote::gone, this, [this] {
     qCInfo(lcDiscovery) << "Spotlight receiver unplugged";
     remote_->deleteLater();

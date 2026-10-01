@@ -39,7 +39,7 @@ void SpotlightDevice::retryLater() {
 }
 
 void SpotlightDevice::lookupReprogramControls() {
-  link_->request(getFeatureIndex(Feature::ReprogramControlsV4), [this](const QByteArray& a) {
+  link_->request(getFeatureIndex(Feature::ReprogramControlsV4, config_.deviceIndex, config_.longMessagesOnly), [this](const QByteArray& a) {
     if (a.isEmpty()) return retryLater();  // asleep: it wakes on a button press or after another request
     reprogIndex_ = static_cast<uint8_t>(a.size() > 4 ? a[4] : 0);
     if (reprogIndex_ == 0) {
@@ -52,7 +52,7 @@ void SpotlightDevice::lookupReprogramControls() {
 }
 
 void SpotlightDevice::lookupPresenterControl() {
-  link_->request(getFeatureIndex(Feature::PresenterControl), [this](const QByteArray& a) {
+  link_->request(getFeatureIndex(Feature::PresenterControl, config_.deviceIndex, config_.longMessagesOnly), [this](const QByteArray& a) {
     if (a.isEmpty()) return retryLater();
     presenterIndex_ = static_cast<uint8_t>(a.size() > 4 ? a[4] : 0);  // 0: this model cannot vibrate this way
     const uint8_t holdFlags = config_.rawMovement ? kDivertWithRawXY : kDivert;
@@ -66,7 +66,7 @@ void SpotlightDevice::lookupPresenterControl() {
 }
 
 void SpotlightDevice::divert(uint16_t cid, uint8_t flags, std::function<void()> next) {
-  link_->request(setCidReporting(reprogIndex_, cid, flags), [this, next = std::move(next)](const QByteArray& a) {
+  link_->request(setCidReporting(reprogIndex_, cid, flags, config_.deviceIndex), [this, next = std::move(next)](const QByteArray& a) {
     if (a.isEmpty()) return retryLater();
     next();
   }, config_.requestTimeoutMs);
@@ -75,14 +75,14 @@ void SpotlightDevice::divert(uint16_t cid, uint8_t flags, std::function<void()> 
 void SpotlightDevice::shutdown() {
   retryTimer_.stop();
   if (reprogIndex_ == 0 || !link_->isOpen()) return;
-  link_->send(setCidReporting(reprogIndex_, kCidHold, kUndivert));
-  link_->send(setCidReporting(reprogIndex_, kCidDoubleClick, kUndivert));
+  link_->send(setCidReporting(reprogIndex_, kCidHold, kUndivert, config_.deviceIndex));
+  link_->send(setCidReporting(reprogIndex_, kCidDoubleClick, kUndivert, config_.deviceIndex));
   setReady(false);
 }
 
 void SpotlightDevice::vibrate(uint8_t length, uint8_t intensity) {
   if (presenterIndex_ == 0 || !link_->isOpen()) return;
-  link_->send(hidpp::vibrate(presenterIndex_, length, intensity));
+  link_->send(hidpp::vibrate(presenterIndex_, length, intensity, config_.deviceIndex));
 }
 
 void SpotlightDevice::onNotification(const QByteArray& message) {

@@ -20,6 +20,14 @@ class HidppTest : public QObject {
     QCOMPARE(getFeatureIndex(Feature::PresenterControl), hex("1001000d1a0000"));
   }
 
+  void bluetoothNeedsTheLongFormOfTheFeatureLookup() {
+    // the Bluetooth hidraw node declares only report 0x11, and the device is addressed with index 0xff
+    const QByteArray m = getFeatureIndex(Feature::ReprogramControlsV4, kDirectDeviceIndex, true);
+    QCOMPARE(m.size(), 20);
+    QCOMPARE(m.left(7), hex("11ff000d1b0400"));
+    QVERIFY(m.mid(7).count('\0') == 13);
+  }
+
   void divertingTheHoldWithRawXYMatchesUpstreamsDocumentedCommand() {
     // {0x11, 0x01, 0x07, 0x3d, 0x00, 0xd8, 0x33, 0 ...} (20 bytes), see doc/LogitechSpotlightHID++.md
     const QByteArray m = setCidReporting(kReprog, kCidHold, kDivertWithRawXY);

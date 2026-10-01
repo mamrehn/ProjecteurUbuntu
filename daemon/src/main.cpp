@@ -6,6 +6,7 @@
 #include <QLoggingCategory>
 #include <QSocketNotifier>
 #include <csignal>
+#include <cstdio>
 #include <memory>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -43,8 +44,20 @@ int main(int argc, char** argv) {
                              QStringLiteral("fds"));
   QCommandLineOption noGrab(QStringLiteral("no-grab"), QStringLiteral("Do not capture the remote's input nodes exclusively."));
   QCommandLineOption verbose(QStringLiteral("verbose"), QStringLiteral("Log debug messages."));
-  parser.addOptions({testFds, noGrab, verbose});
+  QCommandLineOption listDevices(QStringLiteral("list-devices"), QStringLiteral("Print the Spotlight device nodes that would be used, then exit."));
+  parser.addOptions({testFds, noGrab, verbose, listDevices});
   parser.process(app);
+
+  if (parser.isSet(listDevices)) {
+    const SpotlightNodes n = findSpotlight();
+    if (!n.complete()) {
+      std::printf("No Spotlight found (USB receiver plugged in, or the remote paired and awake over Bluetooth?).\n");
+      return 1;
+    }
+    std::printf("%s Spotlight\n  HID++ : %s\n  keys  : %s\n  mouse : %s\n", n.bluetooth ? "Bluetooth" : "USB receiver",
+                qPrintable(n.hidraw), qPrintable(n.keyboard), qPrintable(n.mouse));
+    return 0;
+  }
   if (!parser.isSet(verbose)) QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false"));
 
   // clean shutdown: the buttons are given back to the system (undiverted) when the daemon stops

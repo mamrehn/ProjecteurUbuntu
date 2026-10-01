@@ -8,9 +8,10 @@ virtual monitor and asserts exact pixel values against a known test pattern.
 
 Nothing here touches the real desktop session: own bus, own GSettings keyfile, own HOME/XDG dirs.
 
-    tests/headless/run.py [--keep] [--only NAME]
+    tests/headless/run.py [--keep] [--daemon PATH_TO_projecteurd]
 
---keep keeps the temp directory (screenshots, shell log) and prints its path.
+--keep keeps the temp directory (screenshots, shell and daemon logs) and prints its path.
+--daemon additionally runs the end-to-end test of the Qt6 daemon (see daemon_e2e.py).
 """
 import os
 import pathlib
@@ -70,7 +71,8 @@ class Shot:
 
 # ---------------------------------------------------------------------------------------------
 class Harness:
-    def __init__(self, keep):
+    def __init__(self, keep, daemon=None):
+        self.daemon = daemon
         from gi.repository import Gio, GLib
         self.Gio, self.GLib = Gio, GLib
         self.keep = keep
@@ -352,6 +354,10 @@ def run_tests(h):
     h.check('moving the live lens stays under 60 % of one core', busy < 60, f'{busy:.1f} %')
     h.call('Hide')
 
+    if h.daemon:
+        from daemon_e2e import run_daemon_tests
+        run_daemon_tests(h, h.daemon)
+
     print('== log hygiene')
     h.log.flush()
     log = (h.tmp / 'shell.log').read_text(errors='replace')
@@ -361,7 +367,8 @@ def run_tests(h):
 
 def inner(argv):
     keep = '--keep' in argv
-    h = Harness(keep)
+    daemon = argv[argv.index('--daemon') + 1] if '--daemon' in argv else None
+    h = Harness(keep, daemon)
     rc = 1
     try:
         print(f'temp dir: {h.tmp}')

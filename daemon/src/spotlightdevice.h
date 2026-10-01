@@ -21,6 +21,8 @@ class SpotlightDevice : public QObject {
     bool rawMovement = true;
     int retryMs = 1000;           ///< pause before asking a silent remote again
     int requestTimeoutMs = 1000;  ///< how long to wait for an answer before treating the remote as asleep
+    uint8_t deviceIndex = 0x01;   ///< HID++ device index: 1 behind the USB receiver, 0xff when connected directly (Bluetooth)
+    bool longMessagesOnly = false;  ///< Bluetooth: the hidraw node accepts only 20 byte reports
   };
 
   SpotlightDevice(HidppLink* link, Config config, QObject* parent = nullptr);

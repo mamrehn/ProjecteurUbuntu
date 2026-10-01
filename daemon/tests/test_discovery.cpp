@@ -37,6 +37,24 @@ P: Phys=40:1c:83:3b:81:f6
 H: Handlers=sysrq kbd event14
 )";
 
+// The Bluetooth Spotlight exactly as /proc/bus/input/devices listed it on the test machine (2026-10-01).
+const char* kProcBluetooth = R"(I: Bus=0005 Vendor=046d Product=b503 Version=0032
+N: Name="SPOTLIGHT Keyboard"
+P: Phys=40:1c:83:3b:81:f6
+S: Sysfs=/devices/virtual/misc/uhid/0005:046D:B503.0005/input/input21
+U: Uniq=de:4e:1c:b5:7c:96
+H: Handlers=sysrq kbd event5
+B: PROP=0
+
+I: Bus=0005 Vendor=046d Product=b503 Version=0032
+N: Name="SPOTLIGHT Mouse"
+P: Phys=40:1c:83:3b:81:f6
+S: Sysfs=/devices/virtual/misc/uhid/0005:046D:B503.0005/input/input22
+U: Uniq=de:4e:1c:b5:7c:96
+H: Handlers=mouse2 event6
+B: PROP=0
+)";
+
 void write(const QString& path, const QByteArray& content) {
   QDir().mkpath(QFileInfo(path).path());
   QFile f(path);
@@ -83,6 +101,31 @@ class DiscoveryTest : public QObject {
     const SpotlightNodes n = findUsbReceiver(QString::fromLatin1(kProc), root.path() + QStringLiteral("/class/hidraw"));
     QCOMPARE(n.hidraw, QStringLiteral("/dev/hidraw3"));  // interface 02 of the receiver
     QVERIFY(n.complete());
+  }
+
+  void findsABluetoothSpotlightByItsNodeNamesAndHidrawId() {
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QString hid = root.path() + QStringLiteral("/devices/uhid/0005:046D:B503.0005");
+    write(hid + QStringLiteral("/uevent"), "HID_ID=0005:0000046D:0000B503\nHID_NAME=SPOTLIGHT\n");
+    QDir().mkpath(root.path() + QStringLiteral("/class/hidraw/hidraw1"));
+    QVERIFY(QFile::link(hid, root.path() + QStringLiteral("/class/hidraw/hidraw1/device")));
+    // the touchpad's hidraw (hidraw0) must not match
+    const QString pad = root.path() + QStringLiteral("/devices/i2c/0018:06CB:CE2D.0001");
+    write(pad + QStringLiteral("/uevent"), "HID_ID=0018:000006CB:0000CE2D\n");
+    QDir().mkpath(root.path() + QStringLiteral("/class/hidraw/hidraw0"));
+    QVERIFY(QFile::link(pad, root.path() + QStringLiteral("/class/hidraw/hidraw0/device")));
+
+    const SpotlightNodes n = findBluetoothSpotlight(QString::fromLatin1(kProcBluetooth), root.path() + QStringLiteral("/class/hidraw"));
+    QCOMPARE(n.keyboard, QStringLiteral("/dev/input/event5"));
+    QCOMPARE(n.mouse, QStringLiteral("/dev/input/event6"));
+    QCOMPARE(n.hidraw, QStringLiteral("/dev/hidraw1"));
+    QVERIFY(n.bluetooth && n.complete());
+  }
+
+  void theUsbFinderIgnoresTheBluetoothDevice() {
+    QVERIFY(!findUsbReceiver(QString::fromLatin1(kProcBluetooth), QStringLiteral("/nonexistent")).complete());
+    QVERIFY(findUsbReceiver(QString::fromLatin1(kProcBluetooth), QStringLiteral("/nonexistent")).keyboard.isEmpty());
   }
 
   void nothingFoundWithoutAReceiver() {

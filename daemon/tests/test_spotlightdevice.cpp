@@ -50,6 +50,26 @@ class SpotlightDeviceTest : public QObject {
     QVERIFY(r.remote->requests.contains(divertTo(kCidDoubleClick, 0x03)));
   }
 
+  void overBluetoothEverythingIsALongMessageToDeviceIndexFF() {
+    SpotlightDevice::Config cfg;
+    cfg.deviceIndex = kDirectDeviceIndex;
+    cfg.longMessagesOnly = true;
+    Rig r(cfg);
+    r.remote->longOnly = true;  // like the kernel: short reports are rejected
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QVERIFY(!r.remote->requests.isEmpty());
+    for (const QByteArray& m : std::as_const(r.remote->requests)) {
+      QCOMPARE(m.size(), 20);
+      QCOMPARE(static_cast<uint8_t>(m[0]), uint8_t(0x11));
+      QCOMPARE(static_cast<uint8_t>(m[1]), uint8_t(0xff));
+    }
+    r.remote->requests.clear();
+    r.device->vibrate(1, 0x80);
+    QTRY_COMPARE(r.remote->requests.size(), 1);
+    QCOMPARE(static_cast<uint8_t>(r.remote->requests.first()[1]), uint8_t(0xff));
+  }
+
   void withoutRawMovementTheHoldIsDivertedWithoutTheRawBit() {
     SpotlightDevice::Config cfg;
     cfg.rawMovement = false;

@@ -23,9 +23,10 @@ QByteArray message(uint8_t report, int size, uint8_t dev, uint8_t featureIndex, 
 }
 }  // namespace
 
-QByteArray getFeatureIndex(Feature f, uint8_t dev) {
+QByteArray getFeatureIndex(Feature f, uint8_t dev, bool longForm) {
   const auto id = static_cast<uint16_t>(f);
-  return message(kShortReport, 7, dev, 0x00, 0, {static_cast<uint8_t>(id >> 8), static_cast<uint8_t>(id & 0xff)});
+  return longForm ? message(kLongReport, 20, dev, 0x00, 0, {static_cast<uint8_t>(id >> 8), static_cast<uint8_t>(id & 0xff)})
+                  : message(kShortReport, 7, dev, 0x00, 0, {static_cast<uint8_t>(id >> 8), static_cast<uint8_t>(id & 0xff)});
 }
 
 QByteArray setCidReporting(uint8_t featureIndex, uint16_t cid, uint8_t flags, uint8_t dev) {
