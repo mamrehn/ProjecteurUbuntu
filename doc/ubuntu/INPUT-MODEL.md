@@ -69,30 +69,43 @@ The daemon ran on the real remote, connected directly (no receiver). The same ev
 
 * The handshake works with device index `0xff` and 20 byte messages only; the remote is ready 0.35 s after
   start, and the "connected" pulse is acknowledged (`11 ff 09 1d 00 ...`).
-* Raw X/Y reports arrive at **about 100 per second** (86 to 100 Hz over nine holds).
-* The raw counts vary a lot between holds (|sum| from about 140 to about 12,000 in one deliberate wide sweep),
-  so the pixels-per-count gain is still a guess and needs a calibration run with a known swing.
+* Raw X/Y reports arrive at roughly **100 to 125 per second** while the remote moves (median spacing 8 ms, 95th
+  percentile 16 ms: Bluetooth timing). Reports carry no timestamp, so treat each one as a delta.
+* The counts per hold depend on how far the remote was turned; see the calibration below.
 * The Bluetooth hidraw node also delivers the remote's *ordinary* input as report 1 (keyboard, 8 bytes,
   `01 00 4f ...` = Right arrow) and report 2 (mouse, 8 bytes, `02 01 ...` = button, `02 00 00 14 00 fd ...` =
   movement). `HidppLink` ignores everything that is not report `0x10` / `0x11`.
 * In 3 of 9 holds a plain mouse movement report (report 2) came in just before the release. The daemon holds
   the exclusive grab, so it never reaches the compositor.
 
-### Rotation test, first attempt (2026-10-01, unguided, Bluetooth)
+### Movement counts per degree (measured 2026-10-01, guided, Bluetooth)
 
-Nine holds were recorded instead of the 21 asked for, and they cannot be matched to the requested turns (the
-instructions were only in a notification that disappeared). What the data does show:
+`tools/spotlight_calibrate.py`: the remote flat on a table, action button held, one turn of 90 or 180 degrees per
+hold, 16 accepted turns (28 holds incl. rejected ones; raw data in `doc/ubuntu/data/rotation-calibration-2026-10-01.jsonl`).
+Angles were set by hand, so each turn is good to roughly +-5 to 10 %.
 
-* Turning the remote flat on a table moves **only X**: `dy` stayed within about +-130 counts while `dx` reached
-  thousands. The remote reports yaw as X.
-* Two clean single swings gave +3373 counts (0.56 s) and about +3474 counts (first half of a hold that was then
-  swung back). They agree within 3 %, but the angle was not recorded, so the scale is 19 counts per degree if
-  they were 180 degrees and 38 if they were 90.
-* Holds with back-and-forth turns ended with net sums near zero after thousands of counts each way
-  (for example +88 after 20 s), which is consistent with the counts being an integrated angle.
-* Peak speed in a fast turn: about 13,000 counts per second. Largest single report: 127 counts.
+| | counts per degree (mean) | n |
+|---|---|---|
+| 90 degree turns | 48.7 | 8 |
+| 180 degree turns | 47.7 (49.6 median; one clipped fast turn at 33.8) | 8 |
+| all, median | **49.5** (standard deviation 4.7, 10 %) | 16 |
 
-`tools/spotlight_calibrate.py` replaces this with a guided run that checks every hold itself.
+* **Linear in the angle**: 4,362 counts per 90 degrees against 8,932 per 180 degrees (median), a ratio of 2.05.
+* **X only**: turning flat on a table gives `dy` below 5 % of `dx` in 15 of 16 turns (0.17 in the clipped fast one) and below 0.2 % in 9. Clockwise seen from
+  above is **positive** X, counter-clockwise negative.
+* **No acceleration** between 20 and 270 degrees per second: slow (about 6 s) 49.1, medium 50.2 counts per degree.
+* **Each report is clipped at +-127 counts** (39 reports at exactly 127, three at 126; the field itself is 16 bit).
+  At 100 to 125 reports per second that is a ceiling of about 12,700 to 15,900 counts per second, or 250 to 320
+  degrees per second. A fast 180 degree turn in 0.5 s exceeds it and loses counts (33.8 per degree in the worst
+  case, dy/dx 0.17, so partly a tilted turn). Fast 90 degree turns stayed below the clip and still came out 10 to 15 %
+  below the medium ones (44.5 against 51.8), which may just be hand accuracy. Windows has the same device limit, so the daemon does not
+  compensate.
+* **Pixels per count**: you described the effect on Windows (pointer speed 35 %) as a hand-held flashlight on a
+  15 inch screen from 0.5 m. This screen is 34 cm wide at 1920 pixels (0.177 mm per pixel), where one degree of turn
+  moves a flashlight spot 8.73 mm = 49.3 pixels. With 49.5 counts per degree that is **1.00 pixel per count**, so
+  the daemon's default gain of 1.0 is consistent with that description. It is one subjective data point on one
+  screen; the pixel size and viewing distance of other screens change what "flashlight" means. The tangent of the
+  angle adds at most 4 % at the screen edge (19 degrees) and is ignored.
 
 ## Not measured yet
 
@@ -101,8 +114,10 @@ instructions were only in a notification that disappeared). What the data does s
   Whether the device delays the single-click report is unknown (needs a test with known press times).
 * Latency from pressing the action button to `0xd8` down (the hold threshold).
 * Whether Bluetooth differs in *timing* from USB (see the Bluetooth section for what was verified).
-* How the pointer-speed setting maps to the device (`PointerSpeed`, feature `0x2205`) and to a gain for the
-  raw X/Y counts.
+* How the pointer-speed setting (Windows: 35 %) maps to the gain. The default of 1.0 pixel per count matches the
+  flashlight description at 35 %; whether 0 to 100 % scales it linearly is unknown. The remote's own `PointerSpeed`
+  feature (`0x2205`) was not probed (the remote was asleep when I tried), so it is also unknown whether the remote
+  stores a speed that scales the counts.
 * Why Back and the held-button keys seemed dead through Projecteur on the dongle on 2026-09-29. The raw
   hardware is fine (above), so the fault was after the device and does not matter once the daemon replaces
   Projecteur's forwarding.

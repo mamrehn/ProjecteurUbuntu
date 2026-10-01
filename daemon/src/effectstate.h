@@ -37,7 +37,9 @@ struct EffectSettings {
   std::array<bool, kModeCount> modeEnabled{true, true, true};  ///< checkboxes of the Windows settings page
   bool freeze = true;           ///< "Effekte einfrieren": the effect stays where it is when the button is released
   bool recenter = true;         ///< "Zeiger-Effekte neu zentrieren": slide change moves a visible effect to the centre
-  double pixelsPerCount = 1.0;  ///< gain from the remote's raw X/Y counts to screen pixels (to be calibrated)
+  /// Gain from the remote's raw X/Y counts to screen pixels. The remote gives 49.5 counts per degree of turn
+  /// (doc/ubuntu/INPUT-MODEL.md); 1.0 equals a flashlight spot on a 15 inch, 1920 pixel screen from 0.5 m.
+  double pixelsPerCount = 1.0;
 };
 
 /// The behaviour measured on the Windows app (doc/ubuntu/FEATURE-PARITY.md, section 4 and 4a):

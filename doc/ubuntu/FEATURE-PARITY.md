@@ -120,5 +120,5 @@ more settings** (for example sizes 20 % and 100 %, contrast 30 % and 100 %).
 3. Re-center: which monitor is "the centre" on multi-monitor setups, and what triggers it exactly (Next/Back key presses?).
 4. Cursor control: what the buttons do while it is on.
 5. Fast forward / fast rewind: how many slides, how fast.
-6. Pointer speed 35 %: mapping to the device's HID++ setting.
+6. Pointer speed 35 %: base gain measured (49.5 counts per degree, 1.0 pixel per count matches the flashlight feel at 35 %); how 0 to 100 % scales it, and whether the remote stores its own speed, is still open.
 7. What "re-center on slide change" does exactly on several monitors (not visible in the recording, which has no slide changes).
