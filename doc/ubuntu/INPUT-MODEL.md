@@ -44,12 +44,18 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
   | 2 | 1 | 3 | 3 | 4 |
   | 3 | 1 | 2 | 4 | 4 |
 
-  * The **intensity byte** sets how strong it feels: `0x40` faint, `0x80` clear, `0xc0` strong, `0xff` too strong.
-  * The **length** mostly sets how long it lasts (1 is clearly shorter). **Length 0 is not felt at all**
-    (earlier test), and Projecteur's timer passes length 0.
-  * Sensible default: intensity = percent x 2.55 (Windows' 50 % gives `0x80`, which felt clear to strong)
-    with length 2; length 1 for a short confirmation. One person and a single trial per cell, so the order
-    between neighbouring cells (`0x80` length 2 rated above length 3) is within noise.
+  **What this does and does not establish.** The rater distinguished only **three** strength steps, not four,
+  and felt **durations that diverge** from the length parameter: for example `0x80` was rated clear at length 1
+  and 3 but strong at length 2, and some pulses were noticeably shorter or longer than their length value
+  suggests. So the intensity byte is *not* a simple linear strength knob and the length is *not* an independent
+  duration. Probably the device quantises the intensity into a few steps and the length interacts with them,
+  but that is a guess. Evidence is one rater, one trial per cell, a single random order.
+  * Established separately: **length 0 is not felt at all** (and Projecteur's timer passes length 0).
+  * Where the steps start and end, and the real duration per setting, need an *ordered sweep* (all intensities
+    at one length, then all lengths at one intensity, the rater marks where the feel changes).
+  * Until that is measured, use intensity `0x80` with length 2 for a clear pulse and length 1 for a short
+    confirmation; do not promise the user 100 finely graded levels. The Windows app's vibration slider
+    (reference 50 %) may be just as coarse.
 
 ## Not measured yet
 
