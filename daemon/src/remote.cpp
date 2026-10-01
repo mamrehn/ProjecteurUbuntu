@@ -9,6 +9,9 @@
 #include "keysink.h"
 
 Q_LOGGING_CATEGORY(lcRemote, "projecteur.remote")
+// Every raw movement report (about 100 a second). Off even with --verbose; for calibration runs set
+// QT_LOGGING_RULES=projecteur.raw.debug=true
+Q_LOGGING_CATEGORY(lcRaw, "projecteur.raw", QtInfoMsg)
 
 namespace projecteur {
 
@@ -37,6 +40,7 @@ Remote::Remote(Fds fds, KeySink* keys, OverlaySink* overlay, Options options, QO
   });
   connect(device_, &SpotlightDevice::rawMove, this, [this](int dx, int dy) {
     ++moveCount_; sumDx_ += dx; sumDy_ += dy;
+    qCDebug(lcRaw) << "raw" << dx << dy;
     run(state_.rawMove(dx, dy));
   });
   connect(device_, &SpotlightDevice::doubleClick, this, [this] {
