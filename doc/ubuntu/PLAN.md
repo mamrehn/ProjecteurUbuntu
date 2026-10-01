@@ -141,3 +141,11 @@ size mapping (a placeholder, not calibrated against the Windows app).
 * Consequence: the daemon target is the device layer plus small shims (Qt logging categories, `i18n` mapped to
   `tr`), a generated D-Bus adaptor and a QSettings-based configuration instead of KConfigXT. No Widgets, Quick,
   Wayland client, KF6, Plasma or KPipeWire.
+
+## Decisions
+
+| Decision | Why |
+|---|---|
+| **Vibration: short pulses** (length 1) for timer and battery alerts, told apart by the number of pulses; one longer pulse (length 3) only for "connection established" | a long vibration distracts the speaker during a presentation (maintainer, 2026-10-01) |
+| Vibration strength is monotonic in the intensity byte; the slider maps percent x 2.55 | maintainer guidance; the blind test only suggests about three perceptible steps |
+| New Qt6 daemon in `daemon/` instead of porting Projecteur's application | the measured input model (HID++ diversion, exclusive capture, raw X/Y) differs from Projecteur's design, and its application is tied to KDE and Widgets; only protocol knowledge is reused |

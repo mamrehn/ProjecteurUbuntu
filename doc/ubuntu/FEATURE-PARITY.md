@@ -52,7 +52,7 @@ works on this hardware.
 | 9 | Hold **Next** action | Start presentation · Blank screen · Fast forward · Volume control · Scroll · Keyboard shortcut · No action · Smart actions | Daemon + Prefs | Next/Back hold events, scroll and volume present; "start presentation" absent |
 | 10 | Hold **Back** action | Blank screen · Fast rewind · Volume control · Scroll · Keyboard shortcut · No action · Smart actions | Daemon + Prefs | as above |
 | 11 | Timer | on/off; duration 15 / 30 / 60 min / custom; per duration up to 3 vibration alerts ("5 min remaining" on by default, "1 min remaining", one free) | Daemon + Prefs | presentation timer present |
-| 12 | Vibration | intensity; battery warning; timer notifications | Daemon + Prefs | vibrate present |
+| 12 | Vibration | intensity; battery warning; timer notifications | Daemon + Prefs | vibrate present. Our policy: short pulses only (alerts differ by pulse count), one longer pulse for "connected"; see [INPUT-MODEL.md](INPUT-MODEL.md) |
 | 13 | Battery level | indicator (bottom left) + low-battery vibration | Daemon (+ Ext indicator) | battery reading present |
 | 14 | Connection indicator | USB receiver / Bluetooth | Daemon | device scan present |
 | 15 | Per-application profiles ("Add application") | separate settings per app | Ext (focused-window app id) + Daemon | absent |

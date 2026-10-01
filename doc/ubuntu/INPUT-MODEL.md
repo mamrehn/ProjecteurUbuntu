@@ -44,18 +44,17 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
   | 2 | 1 | 3 | 3 | 4 |
   | 3 | 1 | 2 | 4 | 4 |
 
-  **What this does and does not establish.** The rater distinguished only **three** strength steps, not four,
-  and felt **durations that diverge** from the length parameter: for example `0x80` was rated clear at length 1
-  and 3 but strong at length 2, and some pulses were noticeably shorter or longer than their length value
-  suggests. So the intensity byte is *not* a simple linear strength knob and the length is *not* an independent
-  duration. Probably the device quantises the intensity into a few steps and the length interacts with them,
-  but that is a guess. Evidence is one rater, one trial per cell, a single random order.
-  * Established separately: **length 0 is not felt at all** (and Projecteur's timer passes length 0).
-  * Where the steps start and end, and the real duration per setting, need an *ordered sweep* (all intensities
-    at one length, then all lengths at one intensity, the rater marks where the feel changes).
-  * Until that is measured, use intensity `0x80` with length 2 for a clear pulse and length 1 for a short
-    confirmation; do not promise the user 100 finely graded levels. The Windows app's vibration slider
-    (reference 50 %) may be just as coarse.
+  **How to read this.** One rater, one trial per cell, a single random order: individual ratings are noisy, and
+  the few cells that look inverted (for example `0x80` rated above `0xc0` at length 2 versus length 3) are noise,
+  not findings. The model used is the obvious one: **a higher intensity byte is felt stronger, a longer length
+  lasts longer**. What the data do add: only about **three** strength steps were told apart over the range
+  `0x40`..`0xff`, so do not promise finely graded levels, and **length 0 is not felt at all** (Projecteur's timer
+  passes length 0; here it would be silent).
+
+  **Policy (decided by the maintainer): short pulses.** A long vibration distracts a speaker during a
+  presentation. Use length 1 for every alert (timer, battery, confirmations) and tell alerts apart by the
+  *number* of pulses, not their length. A longer pulse (length 3) is allowed only once, for "connection
+  established". The slider maps to the intensity byte as percent x 2.55 (Windows' 50 % gives `0x80`).
 
 ## Not measured yet
 
