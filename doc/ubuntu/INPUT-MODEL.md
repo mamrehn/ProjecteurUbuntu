@@ -33,9 +33,23 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
   repeating the request, wakes it. Diversions may have to be applied again after a wake-up or reconnect.
 * Feature indices are per device and discovered at run time (IRoot.GetFeature): on this unit
   ReprogramControlsV4 (`0x1b04`) is index `0x07`, PresenterControl (`0x1a00`, vibration) is index `0x09`.
-* **Vibration** (original Spotlight): long message `11 01 <idx> 1d <length> e8 <intensity> …`. Length `0` is
-  **not felt**, `2` is clearly felt, `3` with intensity `0xc0` is strong and long, `1` with `0x80` is the soft
-  feedback pulse used by the tools. (Projecteur's timer passes length 0; that would be silent on this unit.)
+* **Vibration** (original Spotlight): long message `11 01 <idx> 1d <length> e8 <intensity> …`.
+  Blind test, one rater, one trial per cell, random order, 2026-10-01
+  ([tools/spotlight_vibration_test.py](../../tools/spotlight_vibration_test.py)); rating 0 none, 1 faint,
+  2 clear, 3 strong, 4 too strong:
+
+  | length \ intensity | `0x40` | `0x80` | `0xc0` | `0xff` |
+  |---|---|---|---|---|
+  | 1 | 1 | 2 (short) | 3 | 4 (short) |
+  | 2 | 1 | 3 | 3 | 4 |
+  | 3 | 1 | 2 | 4 | 4 |
+
+  * The **intensity byte** sets how strong it feels: `0x40` faint, `0x80` clear, `0xc0` strong, `0xff` too strong.
+  * The **length** mostly sets how long it lasts (1 is clearly shorter). **Length 0 is not felt at all**
+    (earlier test), and Projecteur's timer passes length 0.
+  * Sensible default: intensity = percent x 2.55 (Windows' 50 % gives `0x80`, which felt clear to strong)
+    with length 2; length 1 for a short confirmation. One person and a single trial per cell, so the order
+    between neighbouring cells (`0x80` length 2 rated above length 3) is within noise.
 
 ## Not measured yet
 
