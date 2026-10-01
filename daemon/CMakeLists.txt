@@ -20,7 +20,16 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core DBus Test)
 add_library(effectstate STATIC src/effectstate.cpp src/effectstate.h)
 target_include_directories(effectstate PUBLIC src)
 
+# HID++ 2.0 messages: building requests, decoding events.
+add_library(hidpp STATIC src/hidpp.cpp src/hidpp.h)
+target_include_directories(hidpp PUBLIC src)
+target_link_libraries(hidpp PUBLIC Qt6::Core)
+
 enable_testing()
+add_executable(test_hidpp tests/test_hidpp.cpp)
+target_link_libraries(test_hidpp PRIVATE hidpp Qt6::Test)
+add_test(NAME hidpp COMMAND test_hidpp)
+
 add_executable(test_effectstate tests/test_effectstate.cpp)
 target_link_libraries(test_effectstate PRIVATE effectstate Qt6::Test)
 add_test(NAME effectstate COMMAND test_effectstate)
