@@ -62,6 +62,7 @@ void HidppLink::onReadable() {
     const ssize_t n = ::read(fd_, buf, sizeof buf);
     if (n > 0) {
       const QByteArray msg(buf, static_cast<qsizetype>(n));
+      if (!hidpp::isHidpp(msg)) continue;
       if (inFlight_ && !queue_.empty() && hidpp::answers(queue_.front().message, msg))
         finishFront(msg);
       else

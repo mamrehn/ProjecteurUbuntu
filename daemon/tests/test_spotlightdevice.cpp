@@ -111,6 +111,22 @@ class SpotlightDeviceTest : public QObject {
     QCOMPARE(move.at(1).at(1).toInt(), 2);
   }
 
+  void ordinaryInputReportsOnTheBluetoothNodeAreIgnored() {
+    // recorded over Bluetooth: the hidraw node also delivers the keyboard (report 1) and mouse (report 2) input
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy seen(r.link, &HidppLink::notification);
+    r.remote->notify(hex("01004f0000000000"));  // Right arrow down
+    r.remote->notify(hex("0100000000000000"));  // ... and up
+    r.remote->notify(hex("0201000000000000"));  // left button down
+    r.remote->notify(hex("0200001400fd0000"));  // movement
+    r.remote->notify(hex("11010700" "00d8" "000000000000"));
+    QTRY_COMPARE(seen.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(seen.count(), 1);
+  }
+
   void aRepeatedHoldReportIsNotAFreshPress() {
     Rig r;
     r.device->start();

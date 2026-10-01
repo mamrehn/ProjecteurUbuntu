@@ -68,6 +68,10 @@ std::optional<Event> decode(const QByteArray& msg, uint8_t reprogIndex, uint8_t 
   return std::nullopt;
 }
 
+bool isHidpp(const QByteArray& msg) {
+  return !msg.isEmpty() && (static_cast<uint8_t>(msg[0]) == kShortReport || static_cast<uint8_t>(msg[0]) == kLongReport);
+}
+
 bool answers(const QByteArray& request, const QByteArray& reply) {
   if (request.size() < 4 || reply.size() < 5) return false;
   if (reply[1] != request[1]) return false;

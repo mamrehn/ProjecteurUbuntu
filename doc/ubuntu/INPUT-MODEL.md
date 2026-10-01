@@ -56,13 +56,35 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
   *number* of pulses, not their length. A longer pulse (length 3) is allowed only once, for "connection
   established". The slider maps to the intensity byte as percent x 2.55 (Windows' 50 % gives `0x80`).
 
+## Over Bluetooth (measured 2026-10-01 with `projecteurd --verbose`, 5 minutes, one remote)
+
+The daemon ran on the real remote, connected directly (no receiver). The same events as on USB arrive:
+
+| Action | What the daemon saw |
+|---|---|
+| Next / Back | `KEY_RIGHT` / `KEY_LEFT` on the keyboard node; 54 presses (32 / 22) all forwarded 1:1 on the virtual keyboard, same millisecond |
+| Single click | `BTN_LEFT` (272) on the mouse node, no HID++ message |
+| Double click | HID++ `0xdf` (6 of 6 recognised); no mouse button event with it |
+| Hold | HID++ `0xd8` down / up with raw X/Y (9 of 9 holds, 15 to 334 movement reports each) |
+
+* The handshake works with device index `0xff` and 20 byte messages only; the remote is ready 0.35 s after
+  start, and the "connected" pulse is acknowledged (`11 ff 09 1d 00 ...`).
+* Raw X/Y reports arrive at **about 100 per second** (86 to 100 Hz over nine holds).
+* The raw counts vary a lot between holds (|sum| from about 140 to about 12,000 in one deliberate wide sweep),
+  so the pixels-per-count gain is still a guess and needs a calibration run with a known swing.
+* The Bluetooth hidraw node also delivers the remote's *ordinary* input as report 1 (keyboard, 8 bytes,
+  `01 00 4f ...` = Right arrow) and report 2 (mouse, 8 bytes, `02 01 ...` = button, `02 00 00 14 00 fd ...` =
+  movement). `HidppLink` ignores everything that is not report `0x10` / `0x11`.
+* In 3 of 9 holds a plain mouse movement report (report 2) came in just before the release. The daemon holds
+  the exclusive grab, so it never reaches the compositor.
+
 ## Not measured yet
 
 * The double-click time window. With slow double-clicks (0.9 to 1.4 s) the first click was reported as
   `BTN_MOUSE` and the second as `0xdf`; with fast ones no `BTN_MOUSE` preceded the `0xdf` in several cases.
   Whether the device delays the single-click report is unknown (needs a test with known press times).
 * Latency from pressing the action button to `0xd8` down (the hold threshold).
-* The same events over **Bluetooth** (HID++ over BLE). Next/Back are identical; the rest is unverified.
+* Whether Bluetooth differs in *timing* from USB (see the Bluetooth section for what was verified).
 * How the pointer-speed setting maps to the device (`PointerSpeed`, feature `0x2205`) and to a gain for the
   raw X/Y counts.
 * Why Back and the held-button keys seemed dead through Projecteur on the dongle on 2026-09-29. The raw

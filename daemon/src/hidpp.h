@@ -55,6 +55,10 @@ using Event = std::variant<ButtonsChanged, RawMove, DeviceStatus, ErrorReply>;
 /// (0 = unknown). Returns nothing for messages that are not events (answers to requests, noise).
 std::optional<Event> decode(const QByteArray& msg, uint8_t reprogIndex, uint8_t wirelessIndex = 0);
 
+/// Is this a HID++ report (short 0x10 or long 0x11)? The Bluetooth hidraw node also carries the remote's ordinary
+/// keyboard (report 1) and mouse (report 2) input, which is not ours to interpret.
+bool isHidpp(const QByteArray& msg);
+
 /// Does `reply` answer `request` (same device, feature and function/software id)? Errors count as answers.
 bool answers(const QByteArray& request, const QByteArray& reply);
 
