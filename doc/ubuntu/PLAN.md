@@ -148,6 +148,6 @@ size mapping (a placeholder, not calibrated against the Windows app).
 
 | Decision | Why |
 |---|---|
-| **Vibration: short pulses** (length 1) for timer and battery alerts, told apart by the number of pulses; one longer pulse (length 3) only for "connection established" | a long vibration distracts the speaker during a presentation (maintainer, 2026-10-01) |
+| **Vibration: short pulses** (length 1) for timer and battery alerts, told apart by the number of pulses; one longer pulse (length 3) only for "connection established"; the opt-in minute code adds a medium pulse (length 2) for "five" | a long vibration distracts the speaker during a presentation (maintainer, 2026-10-01); the minute code was the maintainer's own proposal |
 | Vibration strength is monotonic in the intensity byte; the slider maps percent x 2.55 | maintainer guidance; the blind test only suggests about three perceptible steps |
 | New Qt6 daemon in `daemon/` instead of porting Projecteur's application | the measured input model (HID++ diversion, exclusive capture, raw X/Y) differs from Projecteur's design, and its application is tied to KDE and Widgets; only protocol knowledge is reused |

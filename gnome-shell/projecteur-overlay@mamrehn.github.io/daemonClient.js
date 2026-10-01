@@ -14,6 +14,7 @@ const XML = `
     <method name="TimerPause"/>
     <method name="TimerReset"/>
     <method name="Vibrate"><arg type="u" direction="in" name="pulses"/></method>
+    <method name="VibrateMinute"><arg type="u" direction="in" name="minute"/></method>
     <signal name="StatusChanged"><arg type="s" name="json"/></signal>
   </interface>
 </node>`;
@@ -93,6 +94,7 @@ export class DaemonClient {
     timerPause() { this._call('TimerPauseRemote'); }
     timerReset() { this._call('TimerResetRemote'); }
     vibrate(pulses) { this._call('VibrateRemote', pulses); }
+    vibrateMinute(minute) { this._call('VibrateMinuteRemote', minute); }
 
     _call(method, ...args) {
         if (this.available)

@@ -144,9 +144,23 @@ void SpotlightDevice::shutdown() {
   setReady(false);
 }
 
-void SpotlightDevice::vibrate(uint8_t length, uint8_t intensity) {
-  if (presenterIndex_ == 0 || !link_->isOpen()) return;
-  link_->send(hidpp::vibrate(presenterIndex_, length, intensity, config_.deviceIndex));
+void SpotlightDevice::vibrate(uint8_t length, uint8_t intensity, std::function<void()> done) {
+  if (presenterIndex_ == 0 || !link_->isOpen()) {
+    if (done) done();
+    return;
+  }
+  sendVibrate(hidpp::vibrate(presenterIndex_, length, intensity, config_.deviceIndex), qMax(config_.vibrateTries, 1), std::move(done));
+}
+
+void SpotlightDevice::sendVibrate(const QByteArray& message, int triesLeft, std::function<void()> done) {
+  link_->request(message, [this, message, triesLeft, done = std::move(done)](const QByteArray& answer) mutable {
+    if (answer.isEmpty() && triesLeft > 1 && link_->isOpen()) {
+      qCDebug(lcDevice) << "no answer to a vibration request, sending it again";
+      sendVibrate(message, triesLeft - 1, std::move(done));
+      return;
+    }
+    if (done) done();
+  }, config_.vibrateTimeoutMs);
 }
 
 void SpotlightDevice::setRawMovement(bool raw) {

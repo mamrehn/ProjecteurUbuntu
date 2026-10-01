@@ -46,6 +46,7 @@ struct Config {
   bool timerEnabled = false;
   int timerMinutes = 30;
   bool timerAutoStart = true;     ///< start with the first slide change (or "Start presentation") instead of by hand
+  bool timerMinutePulses = false; ///< vibrate the minute code (Haptics::minute) at every minute of the talk
   QList<int> timerAlerts{5};      ///< minutes remaining at which the remote vibrates: up to three slots, 0 = off
 
   /// 35 % pointer speed is 1.0 screen pixel per count of the remote (doc/ubuntu/INPUT-MODEL.md); linear from there.

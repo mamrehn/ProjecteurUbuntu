@@ -23,7 +23,8 @@ Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overla
   keyboard_ = new EvdevDevice(fds.keyboard, this);
   mouse_ = new EvdevDevice(fds.mouse, this);
   actions_ = new HoldActions(keys, pointer, this);
-  haptics_ = new Haptics([this](uint8_t length, uint8_t intensity) { device_->vibrate(length, intensity); }, options_.pulseGapMs, this);
+  haptics_ = new Haptics([this](uint8_t length, uint8_t intensity, Haptics::Done done) { device_->vibrate(length, intensity, std::move(done)); },
+                         options_.pulseGapMs, options_.patternGapMs, this);
   actions_->setConfig(config_);
   haptics_->setIntensity(config_.vibrationIntensity());
 

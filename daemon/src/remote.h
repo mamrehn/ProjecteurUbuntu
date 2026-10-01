@@ -32,6 +32,7 @@ class Remote : public QObject {
     bool grab = true;         ///< capture the keyboard and mouse nodes exclusively
     bool bluetooth = false;   ///< connected directly instead of through the USB receiver
     int pulseGapMs = 450;     ///< pause between the pulses of a vibration pattern
+    int patternGapMs = 1200;  ///< pause between two patterns
   };
   /// At or below this charge the remote warns once (it announces its level in steps, so this must not be lower
   /// than the lowest step; doc/ubuntu/INPUT-MODEL.md).

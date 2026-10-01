@@ -18,6 +18,8 @@
 set -euo pipefail
 
 DEB="" ENABLE=0 CHECK=0 UNINSTALL=0 FORCE=0
+BUILD_TMP=""     # temporary build directory, removed when the script ends
+trap '[ -z "$BUILD_TMP" ] || rm -rf "$BUILD_TMP"' EXIT
 PKG=projecteur-gnome
 UUID="projecteur-overlay@mamrehn.github.io"
 BUILD_DEPS=(cmake ninja-build pkg-config qt6-base-dev dpkg-dev fakeroot libglib2.0-bin)
@@ -92,14 +94,24 @@ install_build_deps() {
   sudo apt-get install -y "${missing[@]}"
 }
 
+# A version that grows with every commit: apt keeps the installed package when a rebuild has the same version number,
+# so a fixed "0.1.0" would make a second ./setup.sh silently install nothing. Uncommitted changes get a timestamp.
+package_version() {
+  local count sha dirty=""
+  count="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+  sha="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then dirty=".$(date +%Y%m%d%H%M%S)"; fi
+  printf '0.1.0+git%s.%s%s' "$count" "$sha" "$dirty"
+}
+
 build_deb() {
   install_build_deps
-  local out; out="$(mktemp -d)"
-  trap 'rm -rf "$out"' EXIT
-  packaging/build-deb.sh "0.1.0" "$out" >&2 || die "building the package failed"
-  DEB="$(ls "$out"/${PKG}_*.deb)"
-  cp "$DEB" "./" && DEB="./$(basename "$DEB")"
-  ok "built $DEB"
+  BUILD_TMP="$(mktemp -d)"
+  chmod 755 "$BUILD_TMP"     # apt runs its download step as the user _apt, which must be able to read the file
+  local version; version="$(package_version)"
+  packaging/build-deb.sh "$version" "$BUILD_TMP" >&2 || die "building the package failed"
+  DEB="$(ls "$BUILD_TMP"/${PKG}_*.deb)"
+  ok "built $(basename "$DEB")"
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -129,6 +141,8 @@ echo
 echo "Installing (sudo apt-get):"
 sudo apt-get install -y "$DEB"
 ok "$PKG installed"
+# an upgrade replaces the files, but the daemon that is already running keeps the old code until it is restarted
+systemctl --user try-restart projecteurd.service 2>/dev/null && info "restarted projecteurd (the remote gives one longer pulse when it reconnects)" || true
 
 if [ "$ENABLE" -eq 1 ]; then
   echo

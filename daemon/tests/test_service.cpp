@@ -60,6 +60,7 @@ struct Rig {
     opt.grab = false;
     opt.bluetooth = bluetooth;
     opt.pulseGapMs = 10;
+    opt.patternGapMs = 20;
     opt.device.retryMs = 20;
     opt.device.requestTimeoutMs = 60;
     remote = new Remote({h[0], keyboard.ours, mouse.ours}, keys, pointer, &overlay, opt);
@@ -67,6 +68,14 @@ struct Rig {
   ~Rig() { delete remote; delete fake; delete keys; delete pointer; }
   bool ready() { return QTest::qWaitFor([this] { return remote->device()->isReady(); }, 3000); }
   int shortPulses() const { return fake->requests.count(hidpp::vibrate(0x09, 1, 0x80)); }
+  int longPulses() const { return fake->requests.count(hidpp::vibrate(0x09, 2, 0x80)); }
+  /// The lengths of all vibration requests so far, in order.
+  QList<int> pulseLengths() const {
+    QList<int> out;
+    for (const QByteArray& m : fake->requests)
+      if (m.size() == 20 && static_cast<uint8_t>(m[2]) == 0x09 && static_cast<uint8_t>(m[3]) == 0x1d && static_cast<uint8_t>(m[4]) != 3) out.append(static_cast<uint8_t>(m[4]));
+    return out;
+  }
 
   Stream keyboard, mouse, keyOut, pointerOut;
   NullOverlay overlay;
@@ -273,6 +282,66 @@ class ServiceTest : public QObject {
     QCOMPARE(s.timer()->state(), State::Idle);
   }
 
+  void theMinuteCodeIsPlayedAtEveryMinuteWhenSwitchedOn() {
+    Clock c;
+    Service s(c.fn());
+    Rig r;
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    QTRY_COMPARE(r.fake->requests.count(hidpp::vibrate(0x09, 3, 0x80)), 1);   // the connection pulse is over
+    s.applyConfigJson(R"({"timer-enabled": true, "timer-minutes": 13, "timer-alerts": [0, 0, 0], "timer-minute-pulses": true})");
+    s.timerStart();
+    const QList<QList<int>> expected{{1}, {1, 1}, {1, 1, 1}, {1, 1, 1, 1}, {2}, {2, 1}, {2, 1, 1}, {2, 1, 1, 1}, {2, 1, 1, 1, 1}, {2, 2}, {1}, {1, 1}};
+    QList<int> all;
+    for (int minute = 1; minute <= 12; ++minute) {
+      c.ms = minute * 60 * 1000;
+      s.timer()->tick();
+      all += expected[minute - 1];
+      QTRY_COMPARE_WITH_TIMEOUT(r.pulseLengths(), all, 3000);
+    }
+  }
+
+  void noMinuteCodeByDefaultAndNoneAtTheEnd() {
+    Clock c;
+    Service s(c.fn());
+    Rig r;
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    s.applyConfigJson(R"({"timer-enabled": true, "timer-minutes": 3, "timer-alerts": [0, 0, 0]})");
+    s.timerStart();
+    c.ms = 60 * 1000; s.timer()->tick();
+    QTest::qWait(100);
+    QCOMPARE(r.shortPulses(), 0);                 // off by default
+    s.applyConfigJson(R"({"timer-minute-pulses": true})");
+    c.ms = 2 * 60 * 1000; s.timer()->tick();
+    QTRY_COMPARE(r.shortPulses(), 2);             // minute 2
+    c.ms = 3 * 60 * 1000; s.timer()->tick();      // the end: three short pulses ("time is up"), not the code for minute 3
+    QTRY_COMPARE(r.shortPulses(), 2 + Haptics::kTimerEndPulses);
+  }
+
+  void anAlertAndAMinuteTogetherPlayOneAfterTheOther() {
+    Clock c;
+    Service s(c.fn());
+    Rig r;
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    s.applyConfigJson(R"({"timer-enabled": true, "timer-minutes": 10, "timer-alerts": [5, 0, 0], "timer-minute-pulses": true})");
+    s.timerStart();
+    c.ms = 5 * 60 * 1000; s.timer()->tick();      // minute 5 (one long pulse) and "5 minutes remaining" (two short ones)
+    QTRY_COMPARE(r.pulseLengths(), (QList<int>{2, 1, 1}));
+  }
+
+  void theMinuteCodeCanBeTriedOverDBusMethodsOfTheService() {
+    Service s;
+    Rig r;
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    s.vibrateMinute(6);
+    QTRY_COMPARE(r.pulseLengths(), (QList<int>{2, 1}));
+    s.vibrateMinute(0);        // clamped to 1
+    QTRY_COMPARE(r.pulseLengths(), (QList<int>{2, 1, 1}));
+  }
+
   void theTestVibrationButtonBuzzesTheRequestedNumberOfPulses() {
     Service s;
     Rig r;
@@ -323,6 +392,7 @@ class ServiceTest : public QObject {
       daemon.call("TimerReset");
       QCOMPARE(parse(daemon.call("GetStatus").toString())["timer"].toObject()["state"].toString(), QStringLiteral("idle"));
       QVERIFY(!daemon.call("Vibrate", {3u}).toString().startsWith("ERROR"));   // no remote: accepted, does nothing
+      QVERIFY(!daemon.call("VibrateMinute", {7u}).toString().startsWith("ERROR"));
 
       // a second daemon must not take over the name
       Service second;

@@ -27,6 +27,7 @@ class DaemonAdaptor : public QDBusAbstractAdaptor {
   void TimerPause();  ///< pauses a running timer, resumes a paused one
   void TimerReset();
   void Vibrate(uint pulses);
+  void VibrateMinute(uint minute);  ///< the minute code of that minute of a talk (1 to 600), to learn it
 
  signals:
   void StatusChanged(const QString& json);

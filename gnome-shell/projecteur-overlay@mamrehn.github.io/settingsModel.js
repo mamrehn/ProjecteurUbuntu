@@ -28,6 +28,7 @@ export const KEYS = {
     'timer-auto-start': {type: 'b', def: true, scope: 'daemon'},
     'timer-alerts': {type: 'ai', def: [5], itemMax: 600, scope: 'daemon'},   // up to three slots, minutes before the end; 0 = off
     'timer-notification': {type: 'b', def: true, scope: 'daemon'},
+    'timer-minute-pulses': {type: 'b', def: false, scope: 'daemon'},
     // not part of a profile
     'show-indicator': {type: 'b', def: true, scope: 'extension', profile: false},
     'profiles': {type: 's', def: '{}', scope: 'extension', profile: false},

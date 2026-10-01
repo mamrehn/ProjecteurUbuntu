@@ -81,6 +81,7 @@ struct Rig {
     opt.device.retryMs = 20;
     opt.device.requestTimeoutMs = 60;
     opt.pulseGapMs = 10;
+    opt.patternGapMs = 20;
     opt.config = config;
     remote = new Remote({h[0], keyboard.ours, mouse.ours}, keyOut, pointerOut, &overlay, opt);
   }

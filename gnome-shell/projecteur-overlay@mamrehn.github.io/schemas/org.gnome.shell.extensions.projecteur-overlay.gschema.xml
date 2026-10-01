@@ -50,6 +50,7 @@
     <key name="timer-minutes" type="i"><range min="1" max="600"/><default>30</default><summary>Timer duration in minutes</summary></key>
     <key name="timer-auto-start" type="b"><default>true</default><summary>Start the timer with the first slide change</summary></key>
     <key name="timer-alerts" type="ai"><default>[5]</default><summary>Minutes remaining at which the remote vibrates (up to three)</summary></key>
+    <key name="timer-minute-pulses" type="b"><default>false</default><summary>Vibrate the minute code at every minute of the talk</summary></key>
     <key name="timer-notification" type="b"><default>true</default><summary>Vibrate for timer alerts</summary></key>
 
     <!-- the extension itself -->

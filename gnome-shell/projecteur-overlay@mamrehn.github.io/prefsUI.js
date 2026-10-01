@@ -81,7 +81,9 @@ export const PAGES = [
             {key: 'timer-auto-start', kind: 'switch', title: 'Start automatically', subtitle: 'With the first slide change or "Start presentation".'},
             {key: 'timer-notification', kind: 'switch', title: 'Vibrate for alerts'},
             {key: 'timer-alerts', kind: 'alerts', title: 'Alert'},
-        ]},
+            {key: 'timer-minute-pulses', kind: 'switch', title: 'Count the minutes',
+                subtitle: 'The remote buzzes the minute of the talk, like a tally: minutes 1 to 4 are that many short pulses, 5 is one long pulse, 6 to 9 a long pulse and 1 to 4 short ones, 10 is two long pulses, and 11 starts again like 1.'},
+        ], minuteTry: true},
     ]},
 ];
 
@@ -356,12 +358,28 @@ function newRegistry() {
 }
 
 // -- the pages ------------------------------------------------------------------------------------------
+/** A row to learn the minute code: pick a minute, feel it on the remote. */
+function makeMinuteTryRow(ctx, registry) {
+    const row = new Adw.SpinRow({
+        title: 'Try the minute code',
+        subtitle: 'Pick a minute of the talk and press Play; the remote buzzes it.',
+        adjustment: new Gtk.Adjustment({lower: 1, upper: 60, step_increment: 1, page_increment: 5, value: 5}),
+    });
+    const play = new Gtk.Button({label: 'Play', valign: Gtk.Align.CENTER});
+    play.connect('clicked', () => ctx.daemon?.vibrateMinute(Math.round(row.value)));
+    row.add_suffix(play);
+    registry.minuteTry = {row, play};
+    return row;
+}
+
 function buildGeneralPage(pageDesc, store, ctx, registry) {
     const page = new Adw.PreferencesPage({title: pageDesc.title, icon_name: pageDesc.icon, name: pageDesc.id});
     for (const g of pageDesc.groups) {
         const group = new Adw.PreferencesGroup({title: g.title, description: g.description ?? ''});
         for (const row of groupRows(g, store, ctx, registry))
             group.add(row);
+        if (g.minuteTry && ctx.daemon)
+            group.add(makeMinuteTryRow(ctx, registry));
         page.add(group);
     }
     return page;

@@ -58,6 +58,7 @@ void PresentationTimer::start() {
   remainingMs_ = qint64(minutes_) * 60 * 1000;
   deadline_ = now() + remainingMs_;
   alertsFired_.clear();
+  lastMinute_ = 0;
   for (int a : std::as_const(alerts_))   // an alert that is already past when the timer starts is not announced
     if (qint64(a) * 60 * 1000 >= remainingMs_) alertsFired_.append(a);
   lastSecond_ = -1;
@@ -85,6 +86,7 @@ void PresentationTimer::reset() {
   ticker_.stop();
   remainingMs_ = qint64(minutes_) * 60 * 1000;
   alertsFired_.clear();
+  lastMinute_ = 0;
   lastSecond_ = -1;
   setState(State::Idle);
   emit remainingChanged(remainingSeconds());
@@ -97,6 +99,12 @@ void PresentationTimer::tick() {
   if (seconds != lastSecond_) {
     lastSecond_ = seconds;
     emit remainingChanged(seconds);
+  }
+  // another full minute has passed; after a long gap (the computer slept) only the current minute is announced
+  const int elapsedMinutes = static_cast<int>((qint64(minutes_) * 60 * 1000 - left) / (60 * 1000));
+  if (elapsedMinutes > lastMinute_) {
+    lastMinute_ = elapsedMinutes;
+    if (left > 0) emit minuteElapsed(elapsedMinutes);
   }
   for (int a : std::as_const(alerts_)) {
     if (!alertsFired_.contains(a) && left <= qint64(a) * 60 * 1000) {

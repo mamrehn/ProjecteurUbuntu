@@ -56,6 +56,17 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
   *number* of pulses, not their length. A longer pulse (length 3) is allowed only once, for "connection
   established". The slider maps to the intensity byte as percent x 2.55 (Windows' 50 % gives `0x80`).
 
+  **Exception, requested by the maintainer (2026-10-01): the minute code**, an opt-in setting. At every minute of
+  a talk the remote buzzes the minute like a tally: 1 to 4 short pulses; 5 one *long* pulse; 6 to 9 a long pulse and
+  1 to 4 short ones; 10 two long pulses; 11 starts again like 1. The long pulse here is `length` 2, shorter than
+  the "connected" pulse (`length` 3); it is off by default. Alerts keep their short pulses (two for a timer alert, three
+  for the end, four for a low battery).
+
+  **Delivery.** A vibration is only counted as played when the remote acknowledges it (`11 <dev> 09 1d ...`). A remote
+  that has been idle answers 0.4 to 0.85 s late (six pulses measured over Bluetooth, none lost); one that is awake
+  answers in 0.07 s. The daemon sends a pulse again, up to four times, when no answer comes, and starts the pause before
+  the next pulse only after the answer, so a late first pulse does not squeeze a pattern together.
+
 ## Over Bluetooth (measured 2026-10-01 with `projecteurd --verbose`, 5 minutes, one remote)
 
 The daemon ran on the real remote, connected directly (no receiver). The same events as on USB arrive:

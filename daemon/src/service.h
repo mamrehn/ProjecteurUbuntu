@@ -36,6 +36,7 @@ class Service : public QObject {
   void timerTogglePause();   ///< pause a running timer, resume a paused one
   void timerReset();
   void vibrate(int pulses);  ///< for the "test vibration" button in the settings
+  void vibrateMinute(int minute);  ///< play the minute code of the given minute (to learn it)
 
  signals:
   void statusChanged(const QString& statusJson);

@@ -14,7 +14,7 @@ small Qt6 daemon. The aim is everything the Windows app (Logi Options+) offers f
 | Size, contrast, colours | settings window, values calibrated against recordings of the Windows app ([FEATURE-PARITY.md](doc/ubuntu/FEATURE-PARITY.md)) |
 | Pointer speed, cursor control, re-center on slide change | settings window |
 | Hold **Next** / **Back** | start presentation (F5), blank screen (B), fast forward / rewind, volume or scrolling by tilting the remote, or any keyboard shortcut |
-| Presentation timer | 1 to 600 minutes, up to three alerts, started by the first slide change; the remote vibrates in short pulses (two for an alert, three for the end), shown in the top bar |
+| Presentation timer | 1 to 600 minutes, up to three alerts, started by the first slide change; the remote vibrates in short pulses (two for an alert, three for the end), shown in the top bar. Optional **minute code**: every minute the remote buzzes the minute like a tally (1 to 4 short pulses, 5 one long, 6 to 9 long plus short, 10 two long, then again from 1) |
 | Vibration, battery | strength setting, test button, battery level, four short pulses when it runs low |
 | **Per-application profiles** | an application's own settings apply while it has the focus |
 | Remote page | connection (USB / Bluetooth), battery, firmware versions |

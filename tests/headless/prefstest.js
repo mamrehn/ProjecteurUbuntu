@@ -37,6 +37,7 @@ const fakeDaemon = {
     status: null,
     vibrate: n => calls.push(['vibrate', n]),
     timerStart: () => calls.push(['start']),
+    vibrateMinute: n => calls.push(['minute', n]),
     timerPause: () => calls.push(['pause']),
     timerReset: () => calls.push(['reset']),
 };
@@ -113,6 +114,11 @@ async function scenario(app) {
     // ---- vibration test button ----
     w('vibration-intensity').test.emit('clicked');
     check('the test button asks the daemon for three pulses', eq(calls.at(-1), ['vibrate', 3]));
+    reg.minuteTry.row.value = 9;
+    reg.minuteTry.play.emit('clicked');
+    check('the minute code can be tried for a chosen minute', eq(calls.at(-1), ['minute', 9]));
+    w('timer-minute-pulses').switch.active = true;
+    check('the minute code switch writes the setting (off by default)', settings.get_boolean('timer-minute-pulses') === true);
 
     // ---- profiles ----
     const APP = 'org.projecteur.TestApp.desktop';

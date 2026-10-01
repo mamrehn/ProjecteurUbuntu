@@ -16,6 +16,9 @@ Service::Service(PresentationTimer::Clock clock, QObject* parent) : QObject(pare
     qCInfo(lcService) << "timer:" << minutes << "minutes remaining";
     if (config_.timerNotification && remote_) remote_->haptics()->pulses(Haptics::kTimerAlertPulses);
   });
+  connect(&timer_, &PresentationTimer::minuteElapsed, this, [this](int minutes) {
+    if (config_.timerMinutePulses && remote_) remote_->haptics()->minute(minutes);
+  });
   connect(&timer_, &PresentationTimer::finished, this, [this] {
     qCInfo(lcService) << "timer: time is up";
     if (config_.timerNotification && remote_) remote_->haptics()->pulses(Haptics::kTimerEndPulses);
@@ -108,6 +111,10 @@ void Service::timerReset() { timer_.reset(); }
 
 void Service::vibrate(int pulses) {
   if (remote_) remote_->haptics()->pulses(qBound(1, pulses, 6));
+}
+
+void Service::vibrateMinute(int minute) {
+  if (remote_) remote_->haptics()->minute(qBound(1, minute, 600));
 }
 
 }  // namespace projecteur

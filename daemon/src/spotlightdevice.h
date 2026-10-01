@@ -33,6 +33,8 @@ class SpotlightDevice : public QObject {
     int batteryPollMs = 10 * 60 * 1000;  ///< the remote also announces level steps itself; this is the safety net
     uint8_t deviceIndex = 0x01;   ///< HID++ device index: 1 behind the USB receiver, 0xff when connected directly (Bluetooth)
     bool longMessagesOnly = false;  ///< Bluetooth: the hidraw node accepts only 20 byte reports
+    int vibrateTimeoutMs = 600;     ///< how long to wait for the remote to acknowledge a pulse (it may be asleep)
+    int vibrateTries = 4;           ///< how often a pulse is sent before it is given up
   };
 
   /// What the remote tells about itself (shown in the settings).
@@ -45,8 +47,10 @@ class SpotlightDevice : public QObject {
 
   void start();     ///< (re)run the handshake
   void shutdown();  ///< undivert the controls and restore the pointer speed (best effort, nothing waits for the answers)
-  /// Vibrate. length 0 is not felt on the original Spotlight; use 1 for a short pulse.
-  void vibrate(uint8_t length, uint8_t intensity);
+  /// Vibrate. length 0 is not felt on the original Spotlight; use 1 for a short pulse. The pulse is sent again when the
+  /// remote does not answer (a sleeping remote ignores the first request). `done` is called once it was acknowledged or
+  /// given up, or at once when there is no remote to vibrate.
+  void vibrate(uint8_t length, uint8_t intensity, std::function<void()> done = {});
   /// Divert the action button's movement as raw X/Y (effects) or leave it to the system pointer (cursor control).
   void setRawMovement(bool raw);
   /// Pointer speed of the movement the remote sends when it controls the cursor. The original level is restored by
@@ -83,6 +87,7 @@ class SpotlightDevice : public QObject {
   Step lookupStep(hidpp::Feature feature, uint8_t* slot);
   Step divertStep(uint16_t cid, std::function<uint8_t()> flags);
   void readFirmwareEntity(int index, int count, Next next);
+  void sendVibrate(const QByteArray& message, int triesLeft, std::function<void()> done);
   void retryLater();
   void setReady(bool ready);
   void updateBattery(const hidpp::BatteryStatus& status);

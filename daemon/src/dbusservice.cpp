@@ -16,7 +16,8 @@ QString DaemonAdaptor::GetStatus() { return service_->statusJson(); }
 void DaemonAdaptor::TimerStart() { service_->timerStart(); }
 void DaemonAdaptor::TimerPause() { service_->timerTogglePause(); }
 void DaemonAdaptor::TimerReset() { service_->timerReset(); }
-void DaemonAdaptor::Vibrate(uint pulses) { service_->vibrate(static_cast<int>(pulses)); }
+void DaemonAdaptor::Vibrate(uint pulses) { service_->vibrate(static_cast<int>(qMin(pulses, 100u))); }
+void DaemonAdaptor::VibrateMinute(uint minute) { service_->vibrateMinute(static_cast<int>(qMin(minute, 600u))); }
 
 bool exportService(QDBusConnection bus, Service* service, QString* error) {
   new DaemonAdaptor(service);   // child of the service: exported with it

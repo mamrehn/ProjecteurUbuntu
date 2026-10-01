@@ -23,6 +23,7 @@ class ConfigTest : public QObject {
     QVERIFY(c.batteryWarning);
     QVERIFY(c.timerNotification);
     QVERIFY(!c.timerEnabled);
+    QVERIFY(!c.timerMinutePulses);   // the minute code is an addition of this fork: off unless asked for
   }
 
   void theJsonRoundTrips() {
@@ -37,6 +38,7 @@ class ConfigTest : public QObject {
     c.timerEnabled = true;
     c.timerMinutes = 45;
     c.timerAlerts = {10, 5, 1};
+    c.timerMinutePulses = true;
     QStringList problems;
     QCOMPARE(Config::fromJson(c.toJson(), Config{}, &problems), c);
     QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
@@ -47,7 +49,7 @@ class ConfigTest : public QObject {
     for (const char* k : {"highlight-enabled", "magnify-enabled", "laser-enabled", "freeze-effects", "recenter-effects", "cursor-control",
                           "pointer-speed", "hold-next-action", "hold-back-action", "hold-next-shortcut", "hold-back-shortcut",
                           "vibration-intensity", "battery-warning", "timer-notification", "timer-enabled", "timer-minutes",
-                          "timer-auto-start", "timer-alerts"})
+                          "timer-auto-start", "timer-alerts", "timer-minute-pulses"})
       QVERIFY2(o.contains(QLatin1String(k)), k);
     QCOMPARE(o["hold-next-action"].toString(), QStringLiteral("start-presentation"));
   }

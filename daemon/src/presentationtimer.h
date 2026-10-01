@@ -36,6 +36,7 @@ class PresentationTimer : public QObject {
   void stateChanged(State state);
   void remainingChanged(int seconds);   ///< once per second while running
   void alert(int minutesRemaining);
+  void minuteElapsed(int minutes);      ///< another full minute of the talk has passed (not at the end: that is `finished`)
   void finished();
 
  private:
@@ -50,6 +51,7 @@ class PresentationTimer : public QObject {
   qint64 deadline_ = 0;     ///< while running
   qint64 remainingMs_ = 0;  ///< while idle / paused / finished
   int lastSecond_ = -1;
+  int lastMinute_ = 0;      ///< the last elapsed minute that was announced
   QTimer ticker_;
 };
 

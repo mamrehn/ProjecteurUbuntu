@@ -284,6 +284,53 @@ class SpotlightDeviceTest : public QObject {
     QCOMPARE(r.remote->requests.first(), hidpp::vibrate(0x09, 1, 0x80));
   }
 
+  void vibrateTellsWhenThePulseWasAcknowledged() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    bool done = false;
+    r.device->vibrate(1, 0x80, [&] { done = true; });
+    QTRY_VERIFY(done);
+  }
+
+  void aPulseToASleepingRemoteIsSentAgainUntilItAnswers() {
+    SpotlightDevice::Config cfg;
+    cfg.vibrateTimeoutMs = 40;
+    Rig r(cfg);
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.remote->ignoreFirst = 2;       // it falls asleep: the next two requests get no answer
+    int done = 0;
+    r.device->vibrate(1, 0x80, [&] { ++done; });
+    QTRY_COMPARE(done, 1);
+    QCOMPARE(r.remote->requests.count(hidpp::vibrate(0x09, 1, 0x80)), 3);
+  }
+
+  void aPulseIsGivenUpAfterTheConfiguredNumberOfTries() {
+    SpotlightDevice::Config cfg;
+    cfg.vibrateTimeoutMs = 30;
+    cfg.vibrateTries = 3;
+    Rig r(cfg);
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.remote->ignoreFirst = 100;     // never answers
+    int done = 0;
+    r.device->vibrate(1, 0x80, [&] { ++done; });
+    QTRY_COMPARE(done, 1);
+    QCOMPARE(r.remote->requests.count(hidpp::vibrate(0x09, 1, 0x80)), 3);
+    QTest::qWait(100);
+    QCOMPARE(done, 1);               // called once, not again
+  }
+
+  void withoutARemoteTheCallbackStillComes() {
+    Rig r;                           // never started: no feature index, cannot vibrate
+    bool done = false;
+    r.device->vibrate(1, 0x80, [&] { done = true; });
+    QVERIFY(done);
+  }
+
   void shutdownReleasesTheDiversions() {
     Rig r;
     r.device->start();

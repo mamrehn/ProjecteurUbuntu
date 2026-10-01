@@ -69,7 +69,7 @@ works on this hardware.
 | 7 | Re-center on slide change | done; on several monitors the centre of the monitor the effect is on |
 | 8 | Freeze | done |
 | 9-10 | Hold Next / Back | done: nothing, start presentation (F5), blank screen (B), fast forward/rewind (repeat Next/Back every 250 ms), volume and scroll by tilting, shortcut. "Smart actions" are not offered |
-| 11 | Timer | done: 1 to 600 min, three alerts, auto-start on first slide change or "start presentation", pause/resume/reset from the top bar |
+| 11 | Timer | done: 1 to 600 min, three alerts, auto-start on first slide change or "start presentation", pause/resume/reset from the top bar. Addition of this fork (not in the Windows app): an opt-in **minute code**, a tally of pulses at every minute (see INPUT-MODEL.md) |
 | 12 | Vibration | done: strength, test button, battery warning, timer alerts; short pulses only (policy) |
 | 13 | Battery | done: level in the top bar and the settings window; low-battery warning at 20 % |
 | 14 | Connection indicator | done: USB receiver / Bluetooth |
