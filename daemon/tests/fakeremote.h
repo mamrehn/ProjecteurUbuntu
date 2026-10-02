@@ -44,7 +44,8 @@ class FakeRemote : public QObject {
   int ignoreFirst = 0;         ///< a sleeping remote does not answer the first requests
   int answerDelayMs = 0;       ///< an idle remote acts on a request at once but answers late (0.4 to 0.85 s measured)
   bool longOnly = false;       ///< Bluetooth: short (7 byte) reports are not accepted
-  QList<QByteArray> requests;  ///< everything received, answered or not
+  QList<QByteArray> requests;     ///< everything received, answered or not, with the software id set to 0x0d
+  QList<QByteArray> rawRequests;  ///< the same, as received
 
  private:
   void onReadable() {
@@ -53,7 +54,10 @@ class FakeRemote : public QObject {
       const ssize_t n = ::read(fd_, buf, sizeof buf);
       if (n <= 0) return;  // nothing more to read (or the other side closed)
       const QByteArray m(buf, static_cast<qsizetype>(n));
-      requests.append(m);
+      rawRequests.append(m);
+      QByteArray normalized = m;   // the daemon gives every request its own software id; the tests compare meanings
+      if (normalized.size() > 3) normalized[3] = static_cast<char>((static_cast<uint8_t>(m[3]) & 0xf0) | 0x0d);
+      requests.append(normalized);
       if (longOnly && m.size() != 20) continue;  // the kernel rejects short reports on the Bluetooth node: no answer
       if (ignoreFirst > 0) {
         --ignoreFirst;
@@ -77,6 +81,7 @@ class FakeRemote : public QObject {
         reply = QByteArray::fromHex("1001000d000002");
         reply[4] = static_cast<char>(features.value(id, 0));
         reply[1] = m[1];
+        reply[3] = m[3];   // function and software id are echoed
         if (m.size() == 20) { reply[0] = 0x11; reply.resize(20); }  // a long request gets a long answer
       } else if (index == kBatteryIndex && function == 0 && features.contains(0x1000)) {
         reply = longAnswer({uint8_t(batteryPercent), uint8_t(batteryNext), uint8_t(batteryState)});

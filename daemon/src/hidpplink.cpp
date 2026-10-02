@@ -59,8 +59,11 @@ void HidppLink::request(const QByteArray& message, Reply callback, int timeoutMs
 void HidppLink::startNext() {
   if (inFlight_ || queue_.empty()) return;
   inFlight_ = true;
-  send(queue_.front().message);
-  timeout_.start(queue_.front().timeoutMs);
+  Pending& p = queue_.front();
+  softwareId_ = softwareId_ % 15 + 1;
+  if (p.message.size() > 3) p.message[3] = static_cast<char>((static_cast<uint8_t>(p.message[3]) & 0xf0) | softwareId_);
+  send(p.message);
+  timeout_.start(p.timeoutMs);
 }
 
 void HidppLink::finishFront(const QByteArray& answer) {

@@ -481,6 +481,47 @@ class SpotlightDeviceTest : public QObject {
     QTRY_COMPARE(down.count(), 1);
   }
 
+  void aLateAnswerIsNeverTakenForTheAnswerToALaterRequest() {
+    // the remote sleeps through a feature lookup and answers it after the next lookup went out: both answers look
+    // alike (10 01 00 <function|software id> <index> ...) except for the software id
+    int fds[2];
+    QCOMPARE(::socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds), 0);
+    HidppLink link(fds[0]);
+    QByteArray first = "pending", second;
+    link.request(getFeatureIndex(Feature::ReprogramControlsV4), [&](const QByteArray& a) { first = a; }, 50);
+    link.request(getFeatureIndex(Feature::PresenterControl), [&](const QByteArray& a) { second = a; }, 3000);
+    char a[64], b[64];
+    QCOMPARE(::recv(fds[1], a, sizeof a, 0), ssize_t(7));
+    QTRY_VERIFY(first.isEmpty());   // timed out ...
+    QCOMPARE(::recv(fds[1], b, sizeof b, 0), ssize_t(7));   // ... and the second lookup went out
+    QVERIFY((a[3] & 0x0f) != 0 && (b[3] & 0x0f) != 0);       // 0 would look like a notification
+    QVERIFY(a[3] != b[3]);
+    const char late[7] = {0x10, 0x01, 0x00, a[3], 0x07, 0x00, 0x02};   // ReprogramControlsV4 is 0x07, ...
+    const char answer[7] = {0x10, 0x01, 0x00, b[3], 0x09, 0x00, 0x02}; // ... PresenterControl 0x09
+    QCOMPARE(::write(fds[1], late, 7), ssize_t(7));
+    QCOMPARE(::write(fds[1], answer, 7), ssize_t(7));
+    QTRY_VERIFY(!second.isEmpty());
+    QCOMPARE(uint8_t(second[4]), uint8_t(0x09));   // its own answer, not the late one
+    ::close(fds[1]);
+  }
+
+  void everyRequestGetsTheNextSoftwareIdAndNeverZero() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());   // 14 requests ...
+    int done = 0;
+    r.device->vibrate(1, 0x80, [&] { ++done; });   // ... and two more: past 15, back to 1
+    r.device->vibrate(1, 0x80, [&] { ++done; });
+    QTRY_COMPARE(done, 2);
+    QList<int> ids;
+    for (const QByteArray& m : std::as_const(r.remote->rawRequests)) ids.append(static_cast<uint8_t>(m[3]) & 0x0f);
+    QCOMPARE(ids.size(), 16);
+    for (int i = 0; i < ids.size(); ++i) {
+      QVERIFY(ids[i] >= 1 && ids[i] <= 15);
+      if (i > 0) QCOMPARE(ids[i], ids[i - 1] % 15 + 1);
+    }
+  }
+
   void closedIsReportedOnceWhenTheDeviceVanishesWhileAnAnswerIsHandled() {
     int fds[2];
     QCOMPARE(::socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds), 0);

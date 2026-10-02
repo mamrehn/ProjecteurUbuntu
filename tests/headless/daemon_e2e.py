@@ -57,7 +57,8 @@ class FakeSpotlight(threading.Thread):
                 return
             if not m:
                 return
-            self.requests.append(m)
+            # the daemon gives every request its own software id (low nibble of byte 3); the checks compare meanings
+            self.requests.append(m[:3] + bytes([(m[3] & 0xf0) | 0x0d]) + m[4:] if len(m) > 3 else m)
             function = m[3] >> 4
 
             def long_answer(*data):
