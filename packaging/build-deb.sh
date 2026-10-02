@@ -17,8 +17,17 @@ trap 'rm -rf "$work"' EXIT
 stage="$work/root"
 
 echo "== build"
+# The distribution's flags, as for any Ubuntu package: -O2, _FORTIFY_SOURCE=3, stack protector and stack clash
+# protection, CET (-fcf-protection), link-time optimisation, full RELRO, frame pointers for profiling.
+export DEB_BUILD_MAINT_OPTIONS="hardening=+all"
+# (stderr: it warns that there is no debian/changelog, which only matters for its ELF package note)
+cxxflags="$(dpkg-buildflags --get CPPFLAGS 2>/dev/null) $(dpkg-buildflags --get CXXFLAGS 2>/dev/null)"
+ldflags="$(dpkg-buildflags --get LDFLAGS 2>/dev/null)"
+echo "   CXXFLAGS: $cxxflags"
+echo "   LDFLAGS:  $ldflags"
+# CMAKE_CXX_FLAGS_RELEASE: only -DNDEBUG on top, so that CMake's own -O3 does not override the -O2 above
 cmake -S daemon -B "$work/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
-      -DCMAKE_CXX_FLAGS="-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,relro,-z,now" \
+      -DCMAKE_CXX_FLAGS="$cxxflags" -DCMAKE_CXX_FLAGS_RELEASE="-DNDEBUG" -DCMAKE_EXE_LINKER_FLAGS="$ldflags" \
       -DPROJECTEURD_VERSION="$version" >/dev/null
 cmake --build "$work/build" --target projecteurd
 DESTDIR="$stage" cmake --install "$work/build" >/dev/null

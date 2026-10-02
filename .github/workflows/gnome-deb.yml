@@ -64,13 +64,27 @@ jobs:
       - name: Install build tools
         run: >
           apt-get install -y -qq --no-install-recommends
-          g++ make cmake ninja-build pkg-config qt6-base-dev dpkg-dev fakeroot libglib2.0-bin binutils dbus
+          g++ make cmake ninja-build pkg-config qt6-base-dev dpkg-dev fakeroot libglib2.0-bin binutils dbus gjs
 
       - name: Daemon unit tests
         run: |
           cmake -S daemon -B build/daemon -G Ninja
           cmake --build build/daemon
           ctest --test-dir build/daemon --output-on-failure
+
+      # The same tests once more with AddressSanitizer and UndefinedBehaviorSanitizer: the daemon is callback-driven
+      # (requests, timeouts, retries, devices that vanish), which is where use-after-free and similar bugs hide.
+      - name: Daemon unit tests under ASan and UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          cmake -S daemon -B build/sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPROJECTEURD_SANITIZE=address,undefined
+          cmake --build build/sanitize
+          ctest --test-dir build/sanitize --output-on-failure
+
+      - name: Extension settings model (plain gjs)
+        run: gjs -m tests/gjs/test_settings_model.js
 
       - name: Build the package
         run: packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist

@@ -18,8 +18,38 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 add_compile_options(-Wall -Wextra -Werror)
 
+# ---- build flags ---------------------------------------------------------------------------------------------
+# The daemon sleeps almost all the time and wakes for ~100 small HID++ reports a second while the button is held: what
+# matters is a small binary that loads fast, not -O3 loop optimisation. The package adds the distribution's hardening
+# flags (dpkg-buildflags, see packaging/build-deb.sh).
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Debug, Release, RelWithDebInfo or MinSizeRel" FORCE)
+endif()
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "flags of a release build (CMake's default is -O3)")
+
+option(PROJECTEURD_LTO "link-time optimisation in release builds" ON)
+if(PROJECTEURD_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT ipoSupported OUTPUT ipoError LANGUAGES CXX)
+  if(ipoSupported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
+  else()
+    message(STATUS "no link-time optimisation: ${ipoError}")
+  endif()
+endif()
+# every function and object in its own section, so the linker drops what is never called; no needless libraries
+add_compile_options($<$<CONFIG:Release,MinSizeRel>:-ffunction-sections> $<$<CONFIG:Release,MinSizeRel>:-fdata-sections>)
+add_link_options(LINKER:--as-needed LINKER:-O1 $<$<CONFIG:Release,MinSizeRel>:LINKER:--gc-sections>)
+
+# Run the tests under sanitizers:  cmake -DPROJECTEURD_SANITIZE=address,undefined -DCMAKE_BUILD_TYPE=Debug ...
+set(PROJECTEURD_SANITIZE "" CACHE STRING "comma separated -fsanitize= list for the daemon and its tests (empty: none)")
+if(PROJECTEURD_SANITIZE)
+  add_compile_options(-fsanitize=${PROJECTEURD_SANITIZE} -fno-sanitize-recover=all -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=${PROJECTEURD_SANITIZE})
+endif()
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core DBus Test)
-find_package(Threads REQUIRED)
 
 # The logic of the pointer effects (hold / freeze / click / double click), free of any I/O.
 add_library(effectstate STATIC src/effectstate.cpp src/effectstate.h)
