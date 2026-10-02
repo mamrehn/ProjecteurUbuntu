@@ -9,6 +9,7 @@ namespace {
 constexpr uint8_t kShortReport = 0x10;
 constexpr uint8_t kLongReport = 0x11;
 constexpr uint8_t kErrorFeature = 0xff;
+constexpr uint8_t kDeviceConnection = 0x41;  ///< HID++ 1.0 notification of the receiver
 
 QByteArray message(uint8_t report, int size, uint8_t dev, uint8_t featureIndex, uint8_t function,
                    std::initializer_list<uint8_t> params) {
@@ -106,6 +107,11 @@ std::optional<Event> decode(const QByteArray& msg, uint8_t reprogIndex, uint8_t 
 
   if (b(2) == kErrorFeature && msg.size() >= 6) return ErrorReply{b(3), b(4), b(5)};
 
+  // The receiver's HID++ 1.0 "device connection" notification (sub id 0x41). Byte 3 is not a function / software id
+  // here but the link's protocol type (non-zero on a real receiver), so this must come before the software id check.
+  // Bit 6 of byte 4 set = the link is not established (the remote went away), per upstream's notes.
+  if (b(0) == kShortReport && b(2) == kDeviceConnection) return DeviceStatus{(b(4) & 0x40) == 0, b(1)};
+
   // Answers to our own requests carry our software id; notifications have software id 0.
   if ((b(3) & 0x0f) != 0) return std::nullopt;
 
@@ -129,9 +135,8 @@ std::optional<Event> decode(const QByteArray& msg, uint8_t reprogIndex, uint8_t 
     }
   }
 
-  // WirelessDeviceStatus: bit 6 of byte 4 set = "device just went away" (short, 0x41) per upstream's notes.
-  if (b(0) == kShortReport && b(2) == 0x41) return DeviceStatus{(b(4) & 0x40) == 0};
-  if (wirelessIndex != 0 && b(2) == wirelessIndex) return DeviceStatus{true};
+  // WirelessDeviceStatus (HID++ 2.0, long): only ever sent when the remote becomes active.
+  if (wirelessIndex != 0 && b(2) == wirelessIndex) return DeviceStatus{true, b(1)};
   return std::nullopt;
 }
 

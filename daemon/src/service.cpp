@@ -10,6 +10,12 @@ namespace projecteur {
 
 Service::Service(PresentationTimer::Clock clock, QObject* parent) : QObject(parent), timer_(std::move(clock)) {
   timer_.configure(config_.timerMinutes, config_.timerAlerts);
+  settingsGrace_.setSingleShot(true);
+  settingsGrace_.setInterval(kSettingsGraceMs);
+  connect(&settingsGrace_, &QTimer::timeout, this, [this] {
+    qCInfo(lcService) << "no settings from the GNOME Shell extension yet: the remote uses the defaults";
+    markSettingsKnown();
+  });
   connect(&timer_, &PresentationTimer::remainingChanged, this, &Service::emitStatus);
   connect(&timer_, &PresentationTimer::stateChanged, this, &Service::emitStatus);
   connect(&timer_, &PresentationTimer::alert, this, [this](int minutes) {
@@ -33,8 +39,16 @@ void Service::setRemote(Remote* remote) {
     connect(remote_, &Remote::statusChanged, this, &Service::emitStatus);
     connect(remote_, &Remote::slideChanged, this, &Service::onSlideChange);
     connect(remote_, &Remote::presentationStarted, this, &Service::onSlideChange);
+    if (settingsKnown_) remote_->settingsKnown();
+    else if (!settingsGrace_.isActive()) settingsGrace_.start();
   }
   emitStatus();
+}
+
+void Service::markSettingsKnown() {
+  settingsGrace_.stop();
+  settingsKnown_ = true;
+  if (remote_) remote_->settingsKnown();
 }
 
 void Service::onSlideChange() {
@@ -49,6 +63,7 @@ QString Service::applyConfigJson(const QString& json) {
     return QStringLiteral("not a JSON object: %1").arg(parseError.errorString());
   QStringList problems;
   setConfig(Config::fromJson(doc.object(), config_, &problems));
+  markSettingsKnown();
   for (const QString& p : std::as_const(problems)) qCWarning(lcService).noquote() << "ignored setting:" << p;
   return problems.join(QLatin1Char('\n'));
 }

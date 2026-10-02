@@ -85,8 +85,9 @@ std::optional<FirmwareEntity> parseFirmwareInfo(const QByteArray& message);
 struct ButtonsChanged { QList<uint16_t> pressed; };
 /// Movement while a control with raw X/Y diverted is held (event 1), in the remote's counts.
 struct RawMove { int dx; int dy; };
-/// The remote woke up or went away (WirelessDeviceStatus); the daemon applies the diversions again.
-struct DeviceStatus { bool awake; };
+/// The remote's link to the receiver came up (`awake`) or went down; on the way up the daemon applies the diversions
+/// again. `device` is the device index the notification is about (the receiver numbers its devices from 1).
+struct DeviceStatus { bool awake; uint8_t device = kDeviceIndex; };
 /// The device rejected a request (HID++ 2.0 error response).
 struct ErrorReply { uint8_t featureIndex; uint8_t functionAndSw; uint8_t code; };
 

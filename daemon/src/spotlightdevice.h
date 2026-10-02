@@ -33,7 +33,10 @@ class SpotlightDevice : public QObject {
     int batteryPollMs = 10 * 60 * 1000;  ///< the remote also announces level steps itself; this is the safety net
     uint8_t deviceIndex = 0x01;   ///< HID++ device index: 1 behind the USB receiver, 0xff when connected directly (Bluetooth)
     bool longMessagesOnly = false;  ///< Bluetooth: the hidraw node accepts only 20 byte reports
-    int vibrateTimeoutMs = 600;     ///< how long to wait for the remote to acknowledge a pulse (it may be asleep)
+    /// How long to wait for the remote to acknowledge a pulse. An idle remote answers 0.4 to 0.85 s late but does play
+    /// the pulse (doc/ubuntu/INPUT-MODEL.md): sending it again before that would make it buzz twice and change the
+    /// meaning of a pattern (alerts are told apart by their number of pulses).
+    int vibrateTimeoutMs = 1500;
     int vibrateTries = 4;           ///< how often a pulse is sent before it is given up
   };
 
@@ -90,6 +93,7 @@ class SpotlightDevice : public QObject {
   void sendVibrate(const QByteArray& message, int triesLeft, std::function<void()> done);
   void retryLater();
   void setReady(bool ready);
+  void releaseHeld();  ///< every control that is still held is released now (link lost, handshake again)
   void updateBattery(const hidpp::BatteryStatus& status);
   void onNotification(const QByteArray& message);
 

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -108,6 +109,46 @@ class TimerTest : public QObject {
     c.ms = 28 * kMinute; t.tick();
     QCOMPARE(alert.count(), 1);
     QCOMPARE(alert.at(0).at(0).toInt(), 2);
+  }
+
+  void anAlertAddedDuringTheTalkForAMomentAlreadyPastIsNotAnnounced() {
+    // regression: switching to a profile with a 10 minute alert when only 4 minutes are left buzzed "10 minutes left"
+    FakeClock c;
+    PresentationTimer t(c.clock());
+    t.configure(30, {5});
+    QList<int> fired;
+    connect(&t, &PresentationTimer::alert, this, [&](int m) { fired.append(m); });
+    t.start();
+    c.ms = 26 * kMinute; t.tick();           // 4 minutes left: the 5 minute alert has fired
+    QCOMPARE(fired, (QList<int>{5}));
+    t.configure(30, {10, 5, 2});             // another profile
+    c.ms += 1000; t.tick();
+    QCOMPARE(fired, (QList<int>{5}));        // not 10, it is long past
+    c.ms = 28 * kMinute; t.tick();
+    QCOMPARE(fired, (QList<int>{5, 2}));     // a future one still comes
+    t.pause();
+    t.configure(30, {3});                    // while paused (2 minutes left): also in the past
+    t.resume();
+    c.ms += 1000; t.tick();
+    QCOMPARE(fired, (QList<int>{5, 2}));
+  }
+
+  void theShownSecondChangesOnTimeWithTheRealClock() {
+    // the timer wakes up when the shown second changes, not on a fixed poll; check that it really does
+    PresentationTimer t;
+    t.configure(1, {});
+    QList<int> seconds;
+    QElapsedTimer elapsed;
+    qint64 firstChangeMs = -1;
+    connect(&t, &PresentationTimer::remainingChanged, this, [&](int s) {
+      seconds.append(s);
+      if (s == 59 && firstChangeMs < 0) firstChangeMs = elapsed.elapsed();
+    });
+    elapsed.start();
+    t.start();
+    QTRY_VERIFY_WITH_TIMEOUT(seconds.contains(58), 3000);
+    QVERIFY2(firstChangeMs >= 990 && firstChangeMs < 1500, qPrintable(QString::number(firstChangeMs)));   // slack for a busy CI
+    QCOMPARE(seconds.mid(0, 3), (QList<int>{60, 59, 58}));   // each second once, none skipped
   }
 
   void resetReturnsToIdleWithTheFullTime() {

@@ -81,6 +81,23 @@ class HoldActionsTest : public QObject {
     for (int code : k.taps()) QCOMPARE(code, int(KEY_RIGHT));
   }
 
+  void aProfileSwitchDuringAFastForwardStopsTheRepeat() {
+    // the focused application changed and its profile holds Next for "nothing": the slides must stop moving
+    RecordingKeys k;
+    HoldActions a(&k, nullptr);
+    a.setRepeatMs(20);
+    a.setConfig(with(HoldAction::FastForward));
+    a.down(Side::Next);
+    QTRY_VERIFY(k.taps().size() >= 3);
+    a.setConfig(with(HoldAction::None));
+    const qsizetype before = k.taps().size();
+    QTest::qWait(100);
+    QCOMPARE(k.taps().size(), before);
+    a.setConfig(with(HoldAction::FastForward));   // switching back does not resume a hold that is half over
+    QTest::qWait(100);
+    QCOMPARE(k.taps().size(), before);
+  }
+
   void fastRewindRepeatsBack() {
     RecordingKeys k;
     HoldActions a(&k, nullptr);

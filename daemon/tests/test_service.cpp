@@ -49,7 +49,7 @@ struct Stream {   ///< a stream socket pair: `ours` goes to the code under test,
 };
 
 struct Rig {
-  explicit Rig(bool bluetooth = false, std::function<void(FakeRemote*)> prepare = {}) {
+  explicit Rig(bool bluetooth = false, std::function<void(FakeRemote*)> prepare = {}, bool waitForSettings = false) {
     int h[2];
     if (::socketpair(AF_UNIX, SOCK_SEQPACKET, 0, h) != 0) qFatal("socketpair failed");
     fake = new FakeRemote(h[1]);
@@ -58,7 +58,9 @@ struct Rig {
     pointer = new FdPointerSink(pointerOut.ours);
     Remote::Options opt;
     opt.grab = false;
+    opt.forwardUngrabbed = true;  // nobody else reads these sockets
     opt.bluetooth = bluetooth;
+    opt.waitForSettings = waitForSettings;
     opt.pulseGapMs = 10;
     opt.patternGapMs = 20;
     opt.device.retryMs = 20;
@@ -68,6 +70,13 @@ struct Rig {
   ~Rig() { delete remote; delete fake; delete keys; delete pointer; }
   bool ready() { return QTest::qWaitFor([this] { return remote->device()->isReady(); }, 3000); }
   int shortPulses() const { return fake->requests.count(hidpp::vibrate(0x09, 1, 0x80)); }
+  /// Every vibration request so far, whatever its length and strength.
+  int pulseCount() const {
+    int n = 0;
+    for (const QByteArray& m : fake->requests)
+      if (m.size() == 20 && static_cast<uint8_t>(m[2]) == 0x09 && static_cast<uint8_t>(m[3]) == 0x1d) ++n;
+    return n;
+  }
   int longPulses() const { return fake->requests.count(hidpp::vibrate(0x09, 2, 0x80)); }
   /// The lengths of all vibration requests so far, in order.
   QList<int> pulseLengths() const {
@@ -351,6 +360,60 @@ class ServiceTest : public QObject {
     QTRY_COMPARE(r.shortPulses(), 3);
     s.vibrate(100);   // capped
     QTRY_COMPARE(r.shortPulses(), 3 + 6);
+  }
+
+  // ---- startup: the user's settings come from the extension a moment after the remote is there ---------------------
+  void aRemoteSetToNoVibrationNeverBuzzesAtStartup() {
+    // regression: the connection pulse was played with the defaults (50 %) when the handshake beat the extension's
+    // settings, although "0 turns every vibration off"
+    Service s;
+    Rig r(false, {}, true);
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    QTest::qWait(150);
+    QCOMPARE(r.pulseCount(), 0);                         // held back: the settings are not known yet
+    QCOMPARE(s.applyConfigJson(R"({"vibration-intensity": 0})"), QString());
+    QTest::qWait(150);
+    QCOMPARE(r.pulseCount(), 0);
+  }
+
+  void theConnectionPulseUsesTheUsersStrength() {
+    Service s;
+    Rig r(false, {}, true);
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    s.applyConfigJson(R"({"vibration-intensity": 100})");
+    QTRY_COMPARE(r.fake->requests.count(hidpp::vibrate(0x09, Haptics::kConnectedPulse, 0xff)), 1);
+    QCOMPARE(r.pulseCount(), 1);
+  }
+
+  void withoutTheExtensionTheRemoteAnnouncesItselfWithTheDefaults() {
+    Service s;
+    s.setSettingsGraceMs(100);
+    Rig r(false, {}, true);
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    QTRY_COMPARE(r.fake->requests.count(hidpp::vibrate(0x09, Haptics::kConnectedPulse, 0x80)), 1);
+  }
+
+  void aLowBatteryAtStartupFollowsTheUsersWarningSetting() {
+    Service s;
+    Rig r(false, [](FakeRemote* f) { f->batteryPercent = 12; }, true);
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    s.applyConfigJson(R"({"battery-warning": false})");
+    QTRY_COMPARE(r.pulseCount(), 1);                     // the connection pulse ...
+    QTest::qWait(150);
+    QCOMPARE(r.shortPulses(), 0);                        // ... but no battery warning: switched off
+  }
+
+  void settingsThatArrivedBeforeTheRemoteApplyAtOnce() {
+    Service s;
+    s.applyConfigJson(R"({"vibration-intensity": 100})");
+    Rig r(false, {}, true);
+    s.setRemote(r.remote);
+    QVERIFY(r.ready());
+    QTRY_COMPARE(r.fake->requests.count(hidpp::vibrate(0x09, Haptics::kConnectedPulse, 0xff)), 1);
   }
 
   // ---- the D-Bus interface, on a private bus -------------------------------------------------------

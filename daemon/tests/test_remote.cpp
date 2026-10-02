@@ -69,7 +69,7 @@ Command move(double dx, double dy) { Command c{T::MoveBy}; c.dx = dx; c.dy = dy;
 Command setMode(Mode m) { Command c{T::SetMode}; c.mode = m; return c; }
 
 struct Rig {
-  explicit Rig(Config config = {}, std::function<void(FakeRemote*)> prepare = {}) {
+  explicit Rig(Config config = {}, std::function<void(FakeRemote*)> prepare = {}, std::function<void(Remote::Options&)> options = {}) {
     int h[2];
     if (::socketpair(AF_UNIX, SOCK_SEQPACKET, 0, h) != 0) qFatal("socketpair failed");
     fake = new FakeRemote(h[1]);
@@ -78,11 +78,13 @@ struct Rig {
     pointerOut = new FdPointerSink(pointerPipe.ours);
     Remote::Options opt;
     opt.grab = false;  // sockets, not input nodes
+    opt.forwardUngrabbed = true;  // nobody else reads these sockets
     opt.device.retryMs = 20;
     opt.device.requestTimeoutMs = 60;
     opt.pulseGapMs = 10;
     opt.patternGapMs = 20;
     opt.config = config;
+    if (options) options(opt);
     remote = new Remote({h[0], keyboard.ours, mouse.ours}, keyOut, pointerOut, &overlay, opt);
   }
   ~Rig() { delete remote; delete fake; delete keyOut; delete pointerOut; }
@@ -325,6 +327,66 @@ class RemoteTest : public QObject {
     ::close(r.keyboard.theirs);
     r.keyboard.theirs = -1;
     QTRY_COMPARE(gone.count(), 1);
+  }
+
+  // ---- regressions --------------------------------------------------------------------------------
+  void keysThatReachTheDesktopAnywayAreNotSentASecondTime() {
+    // the grab fails (here: a socket is not an input node; for real: another program holds the node) or --no-grab:
+    // the desktop gets Next/Back straight from the remote, so the daemon must not send them again (two slides a press)
+    Rig r({}, {}, [](Remote::Options& o) { o.grab = true; o.forwardUngrabbed = false; });
+    QVERIFY(r.ready());
+    QSignalSpy slides(r.remote, &Remote::slideChanged);
+    r.fake->notify(hex("11010700" "00d8" "000000000000"));   // an effect is visible ...
+    QTRY_COMPARE(r.overlay.all.size(), size_t(1));
+    r.keyboard.key(KEY_RIGHT, 1);
+    r.keyboard.key(KEY_RIGHT, 0);
+    r.keyboard.key(KEY_A, 1);
+    QTRY_COMPARE(slides.count(), 1);                         // ... the timer still sees the slide change ...
+    QTRY_COMPARE(r.overlay.all.back(), cmd(T::Recenter));     // ... and the effect is still re-centred
+    QTest::qWait(50);
+    QVERIFY(r.keyPipe.pressedKeys().isEmpty());
+  }
+
+  void holdActionsStillWorkWithoutTheKeyboardGrab() {
+    // held Next/Back arrive as HID++ only, nothing reaches the desktop: their keys must still be sent
+    Rig r({}, {}, [](Remote::Options& o) { o.grab = true; o.forwardUngrabbed = false; });
+    QVERIFY(r.ready());
+    r.fake->notify(hex("11010700" "00da" "000000000000"));
+    r.fake->notify(hex("110107000000000000000000"));
+    QList<int> keys;
+    QTRY_VERIFY((keys += r.keyPipe.pressedKeys(), !keys.isEmpty()));
+    QCOMPARE(keys, (QList<int>{KEY_F5}));
+  }
+
+  void goneArrivesEvenWhenTheLinkFailsWhileTheRemoteIsCreated() {
+    // the handshake's first write fails inside the constructor; gone() used to be emitted right there, before
+    // anyone could connect to it, and the dead remote was never replaced
+    Pipe keyboard, mouse;
+    RecordingOverlay overlay;
+    const int hidraw = ::open("/dev/null", O_RDONLY | O_CLOEXEC);   // writing to it fails with EBADF
+    QVERIFY(hidraw >= 0);
+    Remote::Options opt;
+    opt.grab = false;
+    Remote remote({hidraw, keyboard.ours, mouse.ours}, nullptr, nullptr, &overlay, opt);
+    QSignalSpy gone(&remote, &Remote::gone);   // connected after construction, like RemoteWatcher does
+    QTRY_COMPARE(gone.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(gone.count(), 1);
+  }
+
+  void aHeldFastForwardStopsWhenTheRemoteLosesItsLink() {
+    Config c;
+    c.holdNext = HoldAction::FastForward;
+    Rig r(c);
+    QVERIFY(r.ready());
+    r.fake->notify(hex("11010700" "00da" "000000000000"));   // Next held: steps through the slides
+    QList<int> keys;
+    QTRY_VERIFY((keys += r.keyPipe.pressedKeys(), keys.size() >= 2));
+    r.fake->notify(hex("10014104" "441ab0"));                 // out of range: its release report never comes
+    QTest::qWait(100);
+    r.keyPipe.pressedKeys();
+    QTest::qWait(600);                                         // more than two repeat intervals
+    QVERIFY(r.keyPipe.pressedKeys().isEmpty());
   }
 
   void deletingTheRemoteReleasesTheDiversions() {

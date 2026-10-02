@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 #include "hidpplink.h"
 
+#include <QLoggingCategory>
 #include <QSocketNotifier>
 #include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "hidpp.h"
+
+Q_LOGGING_CATEGORY(lcLink, "projecteur.link")
 
 namespace projecteur {
 
@@ -25,13 +29,26 @@ HidppLink::~HidppLink() {
 
 void HidppLink::send(const QByteArray& message) {
   if (fd_ < 0) return;
-  const ssize_t n = ::write(fd_, message.constData(), static_cast<size_t>(message.size()));
-  if (n < 0 && errno != EAGAIN) {  // the node vanished (unplugged)
-    notifier_->setEnabled(false);
-    ::close(fd_);
-    fd_ = -1;
-    emit closed();
+  ssize_t n;
+  do n = ::write(fd_, message.constData(), static_cast<size_t>(message.size()));
+  while (n < 0 && errno == EINTR);
+  if (n >= 0) {
+    writeFailing_ = false;
+    return;
   }
+  // hidraw answers ENODEV once the receiver is unplugged; anything else (a USB transfer error, a full queue) is
+  // transient: the request simply goes unanswered, and the caller's timeout and retry deal with it
+  if (errno == ENODEV || errno == EBADF) return closeLink();
+  if (!writeFailing_) qCWarning(lcLink) << "writing to the remote failed:" << std::strerror(errno);
+  writeFailing_ = true;
+}
+
+void HidppLink::closeLink() {
+  if (fd_ < 0) return;
+  notifier_->setEnabled(false);
+  ::close(fd_);
+  fd_ = -1;
+  emit closed();
 }
 
 void HidppLink::request(const QByteArray& message, Reply callback, int timeoutMs) {
@@ -58,7 +75,7 @@ void HidppLink::finishFront(const QByteArray& answer) {
 
 void HidppLink::onReadable() {
   char buf[64];
-  for (;;) {
+  while (fd_ >= 0) {  // a callback below may have closed the link
     const ssize_t n = ::read(fd_, buf, sizeof buf);
     if (n > 0) {
       const QByteArray msg(buf, static_cast<qsizetype>(n));
@@ -70,12 +87,8 @@ void HidppLink::onReadable() {
       continue;
     }
     if (n < 0 && errno == EAGAIN) return;
-    // EOF or a real error: the device is gone
-    notifier_->setEnabled(false);
-    ::close(fd_);
-    fd_ = -1;
-    emit closed();
-    return;
+    if (n < 0 && errno == EINTR) continue;
+    return closeLink();  // EOF or a real error: the device is gone
   }
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include <QSignalSpy>
 #include <QtTest>
+#include <csignal>
 
 #include "hidpp.h"
 #include "fakeremote.h"
@@ -39,6 +40,8 @@ class SpotlightDeviceTest : public QObject {
   Q_OBJECT
 
  private slots:
+  void initTestCase() { std::signal(SIGPIPE, SIG_IGN); }   // writes to a closed fake remote fail with EPIPE, as in the daemon
+
   void handshakeFindsTheFeaturesAndDivertsTheActionButton() {
     Rig r;
     r.device->start();
@@ -363,6 +366,139 @@ class SpotlightDeviceTest : public QObject {
     r.remote->notify(hex("10014100" "000000"));  // short WirelessDeviceStatus, bit clear = awake
     QTRY_VERIFY(r.remote->requests.contains(divertTo(kCidHold, 0x33)));
     QVERIFY(r.becomesReady());
+  }
+
+  // ---- regressions --------------------------------------------------------------------------------
+  void aReconnectAsTheReceiverReportsItAppliesTheDiversionsAgain() {
+    // the real notification carries the protocol type in byte 3 (0x04); it used to be ignored
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.remote->notify(hex("10014104" "041ab0"));
+    QTRY_VERIFY(r.remote->requests.contains(divertTo(kCidHold, 0x33)));
+    QVERIFY(r.remote->requests.contains(divertTo(kCidNextHold, 0x33)));
+    QVERIFY(r.becomesReady());
+  }
+
+  void aReconnectOfAnotherDeviceOnTheReceiverChangesNothing() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy ready(r.device, &SpotlightDevice::readyChanged);
+    r.remote->requests.clear();
+    r.remote->notify(hex("10024104" "041ab0"));   // device index 2
+    QTest::qWait(100);
+    QVERIFY(r.remote->requests.isEmpty());
+    QCOMPARE(ready.count(), 0);
+  }
+
+  void controlsHeldWhenTheLinkDropsAreReleased() {
+    // the release report of a held control never comes once the remote is out of range or its battery dies;
+    // a held "fast forward" would otherwise step through the slides for good
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy up(r.device, &SpotlightDevice::holdUp), sideUp(r.device, &SpotlightDevice::sideHoldUp),
+        sideDown(r.device, &SpotlightDevice::sideHoldDown);
+    r.remote->notify(hex("11010700" "00d8" "00da" "00000000"));   // action button and Next held together
+    QTRY_COMPARE(sideDown.count(), 1);
+    r.remote->notify(hex("10014104" "441ab0"));                   // link lost
+    QTRY_COMPARE(up.count(), 1);
+    QCOMPARE(sideUp.count(), 1);
+    QCOMPARE(sideUp.at(0).at(0).value<Side>(), Side::Next);
+    r.remote->notify(hex("110107000000000000000000"));            // a late release report changes nothing
+    QTest::qWait(50);
+    QCOMPARE(up.count(), 1);
+    QCOMPARE(sideUp.count(), 1);
+  }
+
+  void startingTheHandshakeAgainReleasesHeldControls() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy sideUp(r.device, &SpotlightDevice::sideHoldUp), sideDown(r.device, &SpotlightDevice::sideHoldDown);
+    r.remote->notify(hex("11010700" "00dc" "000000000000"));      // Back held
+    QTRY_COMPARE(sideDown.count(), 1);
+    r.remote->notify(hex("10014104" "041ab0"));                   // reconnect: the handshake starts over
+    QTRY_COMPARE(sideUp.count(), 1);
+    QCOMPARE(sideUp.at(0).at(0).value<Side>(), Side::Back);
+  }
+
+  void aClosedLinkReleasesHeldControls() {
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy up(r.device, &SpotlightDevice::holdUp), down(r.device, &SpotlightDevice::holdDown);
+    r.remote->notify(hex("11010700" "00d8" "000000000000"));
+    QTRY_COMPARE(down.count(), 1);
+    r.remote->closeNow();
+    QTRY_COMPARE(up.count(), 1);
+  }
+
+  void aLateAcknowledgementDoesNotPlayThePulseTwice() {
+    // measured: an idle remote plays the pulse but answers up to 0.85 s late. Sending it again before that made
+    // the remote buzz twice, which changes the meaning of a pattern (alerts differ by their number of pulses).
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->requests.clear();
+    r.remote->answerDelayMs = 850;
+    int done = 0;
+    r.device->vibrate(1, 0x80, [&] { ++done; });
+    QTRY_COMPARE_WITH_TIMEOUT(done, 1, 3000);
+    QCOMPARE(r.remote->requests.count(hidpp::vibrate(0x09, 1, 0x80)), 1);
+  }
+
+  void theOriginalPointerSpeedIsReadBeforeItIsChangedEvenWhileARequestIsInFlight() {
+    Rig r;
+    r.remote->pointerSpeed = 0x12;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    r.remote->answerDelayMs = 30;
+    r.device->vibrate(1, 0x80);        // in flight while the speed is changed
+    r.device->setPointerSpeed(0x18);
+    QTRY_COMPARE(r.remote->pointerSpeed, 0x18);
+    QTest::qWait(150);                 // every answer is in
+    r.remote->requests.clear();
+    r.device->shutdown();
+    QTRY_VERIFY(r.remote->requests.contains(setPointerSpeed(0x0a, 0x12)));   // the level before, not our own
+  }
+
+  void aTransientWriteErrorKeepsTheLinkOpen() {
+    // only "the device is gone" closes the link; other write errors (a USB transfer error) make a request go
+    // unanswered, and its timeout and retry handle that
+    Rig r;
+    r.device->start();
+    QVERIFY(r.becomesReady());
+    QSignalSpy closed(r.link, &HidppLink::closed), down(r.device, &SpotlightDevice::holdDown);
+    QCOMPARE(::shutdown(r.remote->fd(), SHUT_RD), 0);   // our writes now fail with EPIPE, reads still work
+    r.device->vibrate(1, 0x80);
+    QTest::qWait(50);
+    QVERIFY(r.link->isOpen());
+    QCOMPARE(closed.count(), 0);
+    r.remote->notify(hex("11010700" "00d8" "000000000000"));
+    QTRY_COMPARE(down.count(), 1);
+  }
+
+  void closedIsReportedOnceWhenTheDeviceVanishesWhileAnAnswerIsHandled() {
+    int fds[2];
+    QCOMPARE(::socketpair(AF_UNIX, SOCK_SEQPACKET, 0, fds), 0);
+    HidppLink link(fds[0]);
+    QSignalSpy closed(&link, &HidppLink::closed);
+    link.request(getFeatureIndex(Feature::Root), [&](const QByteArray&) {
+      // like a handshake step: the answer triggers the next request, whose write finds the device gone
+      link.request(getFeatureIndex(Feature::PresenterControl), nullptr);
+    });
+    char buf[64];
+    QCOMPARE(::recv(fds[1], buf, sizeof buf, MSG_DONTWAIT), ssize_t(7));   // the first request went out at once
+    const QByteArray answer = hex("1001000d000000");
+    QCOMPARE(::write(fds[1], answer.constData(), static_cast<size_t>(answer.size())), ssize_t(answer.size()));
+    ::close(fds[1]);   // gone right after answering
+    QTRY_COMPARE(closed.count(), 1);
+    QTest::qWait(50);
+    QCOMPARE(closed.count(), 1);
+    QVERIFY(!link.isOpen());
   }
 };
 

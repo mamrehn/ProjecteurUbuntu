@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include <QRandomGenerator>
 #include <QtTest>
 
 #include "hidpp.h"
@@ -178,6 +179,57 @@ class HidppTest : public QObject {
     const QByteArray req = vibrate(0x09, 1, 0x80);
     QVERIFY(answers(req, hex("1001ff091d0500")));
     QVERIFY(!answers(req, hex("1001ff071d0500")));    // error for another feature
+  }
+
+  // ---- the receiver's connection notification -----------------------------------------------------
+  void theReceiversConnectionNotificationIsDecodedWhateverItsProtocolType() {
+    // HID++ 1.0 sub id 0x41: byte 3 is the link's protocol type (0x04 on a Unifying-style receiver), not a function /
+    // software id. Regression: it used to be dropped as "an answer to our own request" and the remote's diversions
+    // were never applied again after it reconnected to the receiver.
+    for (const char* awake : {"10014104041ab0", "10014100041ab0", "1001410f04ffff"}) {
+      const auto e = decode(hex(awake), kReprog);
+      QVERIFY2(e && std::holds_alternative<DeviceStatus>(*e), awake);
+      QVERIFY(std::get<DeviceStatus>(*e).awake);
+      QCOMPARE(std::get<DeviceStatus>(*e).device, uint8_t(0x01));
+    }
+    const auto gone = decode(hex("10014104441ab0"), kReprog);   // bit 6 of byte 4: link not established
+    QVERIFY(gone && std::holds_alternative<DeviceStatus>(*gone));
+    QVERIFY(!std::get<DeviceStatus>(*gone).awake);
+    const auto other = decode(hex("10024104041ab0"), kReprog);  // the second device slot of the receiver
+    QVERIFY(other && std::holds_alternative<DeviceStatus>(*other));
+    QCOMPARE(std::get<DeviceStatus>(*other).device, uint8_t(0x02));
+  }
+
+  void aLongMessageWithIndex0x41IsNotAConnectionNotification() {
+    QVERIFY(!decode(hex("11014104041ab0" "00000000000000000000000000"), kReprog).has_value());
+  }
+
+  // ---- robustness: whatever arrives on the node must never crash the daemon -----------------------------
+  void arbitraryBytesNeverCrashTheDecoders() {
+    // a fixed seed keeps failures reproducible; run under ASan/UBSan (PROJECTEURD_SANITIZE) this checks every read
+    QRandomGenerator rng(0x5107);
+    const QByteArray request = getFeatureIndex(Feature::ReprogramControlsV4);
+    int decoded = 0;
+    for (int i = 0; i < 200000; ++i) {
+      QByteArray m(rng.bounded(0, 65), Qt::Uninitialized);
+      for (char& c : m) c = static_cast<char>(rng.bounded(256));
+      if (!m.isEmpty() && rng.bounded(2)) m[0] = static_cast<char>(rng.bounded(2) ? 0x10 : 0x11);   // mostly HID++
+      if (decode(m, kReprog, 0x05, 0x06)) ++decoded;
+      (void)isHidpp(m);
+      (void)answers(request, m);
+      (void)answers(m, request);
+      (void)parseBatteryStatus(m);
+      (void)parseFirmwareEntityCount(m);
+      (void)parseFirmwareInfo(m);
+    }
+    QVERIFY(decoded > 0);   // the generator does reach the interesting paths
+  }
+
+  void rawMovementIsSignedBigEndian() {
+    const auto e = decode(hex("11010710" "8000" "7fff" "00000000000000000000"), kReprog);
+    QVERIFY(e && std::holds_alternative<RawMove>(*e));
+    QCOMPARE(std::get<RawMove>(*e).dx, -32768);
+    QCOMPARE(std::get<RawMove>(*e).dy, 32767);
   }
 };
 

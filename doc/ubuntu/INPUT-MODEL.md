@@ -64,8 +64,10 @@ Next/Back were also checked over Bluetooth. This is the input side of the plan i
 
   **Delivery.** A vibration is only counted as played when the remote acknowledges it (`11 <dev> 09 1d ...`). A remote
   that has been idle answers 0.4 to 0.85 s late (six pulses measured over Bluetooth, none lost); one that is awake
-  answers in 0.07 s. The daemon sends a pulse again, up to four times, when no answer comes, and starts the pause before
-  the next pulse only after the answer, so a late first pulse does not squeeze a pattern together.
+  answers in 0.07 s. The daemon waits 1.5 s for the answer and only then sends the pulse again (up to four times):
+  a late answer still means the pulse was played, and sending it again earlier would make the remote buzz twice and
+  change the meaning of a pattern. The pause before the next pulse starts only after the answer, so a late first
+  pulse does not squeeze a pattern together.
 
 ## Over Bluetooth (measured 2026-10-01 with `projecteurd --verbose`, 5 minutes, one remote)
 
@@ -152,7 +154,10 @@ Angles were set by hand, so each turn is good to roughly +-5 to 10 %.
 ## What this means for the daemon
 
 1. At connect (and after every wake-up) divert `0xd8` with `0x33` and `0xdf` with `0x03`. With *cursor control*
-   on, divert `0xd8` with `0x03` instead so the movement moves the real pointer.
+   on, divert `0xd8` with `0x03` instead so the movement moves the real pointer. Behind the USB receiver a wake-up
+   is the receiver's HID++ 1.0 notification `10 01 41 <protocol> <flags> ...` (byte 3 is the link's protocol type,
+   not a software id; bit 6 of byte 4 set means the link went down). When the link goes down, every control that is
+   still held is released: its release report cannot arrive any more.
 2. Capture the receiver's mouse node exclusively: otherwise a short press clicks in the app under the pointer.
    Forward it only when cursor control is on.
 3. Inputs of the effect state machine: hold down, raw X/Y deltas, hold up, short press, double-click, Next, Back.

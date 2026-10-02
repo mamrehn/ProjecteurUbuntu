@@ -2,6 +2,7 @@
 #include "spotlightdevice.h"
 
 #include <QLoggingCategory>
+#include <utility>
 
 Q_LOGGING_CATEGORY(lcDevice, "projecteur.device")
 
@@ -25,8 +26,18 @@ SpotlightDevice::SpotlightDevice(HidppLink* link, Config config, QObject* parent
     retryTimer_.stop();
     batteryTimer_.stop();
     starting_ = false;
+    releaseHeld();
     setReady(false);
   });
+}
+
+void SpotlightDevice::releaseHeld() {
+  // The release report of a control that is held while the link drops (or while the handshake starts over) never
+  // comes. Without this a held "fast forward" would go on stepping through the slides for good.
+  const QSet<uint16_t> held = std::exchange(held_, {});
+  if (held.contains(kCidHold)) emit holdUp();
+  if (held.contains(kCidNextHold)) emit sideHoldUp(Side::Next);
+  if (held.contains(kCidBackHold)) emit sideHoldUp(Side::Back);
 }
 
 void SpotlightDevice::setReady(bool ready) {
@@ -70,7 +81,8 @@ SpotlightDevice::Step SpotlightDevice::divertStep(uint16_t cid, std::function<ui
 void SpotlightDevice::start() {
   if (starting_ || !link_->isOpen()) return;
   starting_ = true;
-  held_.clear();
+  retryTimer_.stop();
+  releaseHeld();
 
   auto steps = std::make_shared<std::vector<Step>>();
   steps->push_back(lookupStep(Feature::ReprogramControlsV4, &reprogIndex_));
@@ -181,7 +193,9 @@ void SpotlightDevice::setPointerSpeed(uint8_t level) {
       if (!a.isEmpty() && !isErrorAnswer(a) && a.size() > 4) originalPointerSpeed_ = static_cast<uint8_t>(a[4]);
     }, config_.requestTimeoutMs);
   }
-  link_->send(hidpp::setPointerSpeed(pointerSpeedIndex_, level, config_.deviceIndex));
+  // queued behind the read above: sent directly it could overtake it while another request is in flight, and the
+  // "original" level read back would be our own
+  link_->request(hidpp::setPointerSpeed(pointerSpeedIndex_, level, config_.deviceIndex), nullptr, config_.requestTimeoutMs);
 }
 
 void SpotlightDevice::refreshBattery() {
@@ -222,7 +236,13 @@ void SpotlightDevice::onNotification(const QByteArray& message) {
     else if (held_.contains(kCidNextHold)) emit sideMove(Side::Next, move->dx, move->dy);
     else if (held_.contains(kCidBackHold)) emit sideMove(Side::Back, move->dx, move->dy);
   } else if (const auto* status = std::get_if<DeviceStatus>(&*event)) {
-    if (status->awake && ready_) {  // be safe: apply the diversions again after a wake-up
+    if (status->device != config_.deviceIndex) return;  // another device paired to the same receiver
+    if (!status->awake) {
+      qCDebug(lcDevice) << "the remote's link went down";
+      releaseHeld();   // its release reports cannot arrive any more
+    } else if (!starting_) {
+      // diversions do not survive the remote losing its link (doc/ubuntu/INPUT-MODEL.md): apply them again
+      qCDebug(lcDevice) << "the remote's link is up again";
       setReady(false);
       start();
     }

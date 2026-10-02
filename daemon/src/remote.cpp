@@ -18,6 +18,7 @@ namespace projecteur {
 Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overlay, Options options, QObject* parent)
     : QObject(parent), config_(options.config), state_(options.config.effectSettings()), options_(options), keys_(keys), overlay_(overlay) {
   options_.device.rawMovement = !config_.cursorControl;
+  settingsKnown_ = !options_.waitForSettings;
   link_ = new HidppLink(fds.hidraw, this);
   device_ = new SpotlightDevice(link_, options_.device, this);
   keyboard_ = new EvdevDevice(fds.keyboard, this);
@@ -28,12 +29,16 @@ Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overla
   actions_->setConfig(config_);
   haptics_->setIntensity(config_.vibrationIntensity());
 
+  bool keyboardGrabbed = false;
   if (options_.grab) {
     // The Next / Back keys are re-sent through the virtual keyboard, a short press of the action button is a
     // plain mouse click that must not reach the application under the pointer.
-    if (!keyboard_->grab(true)) qCWarning(lcRemote) << "cannot grab the remote's keyboard node; Next/Back reach the desktop directly";
+    keyboardGrabbed = keyboard_->grab(true);
+    if (!keyboardGrabbed) qCWarning(lcRemote) << "cannot grab the remote's keyboard node; Next/Back reach the desktop directly";
     if (!mouse_->grab(!config_.cursorControl)) qCWarning(lcRemote) << "cannot grab the remote's mouse node; a short click would click in the application";
   }
+  // keys that reach the desktop anyway must not be sent a second time (every slide change would skip a slide)
+  forwardKeys_ = keys_ && (keyboardGrabbed || options_.forwardUngrabbed);
 
   connect(device_, &SpotlightDevice::holdDown, this, [this] {
     moveCount_ = 0; sumDx_ = sumDy_ = 0;
@@ -64,10 +69,7 @@ Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overla
     qCInfo(lcRemote) << (ready ? "remote ready" : "remote not ready");
     if (ready) {
       applyDeviceConfig();
-      if (!announcedConnection_) {  // once per connection, not after every wake-up
-        announcedConnection_ = true;
-        haptics_->connected();
-      }
+      announce();
     }
     emit statusChanged();
   });
@@ -79,7 +81,9 @@ Remote::Remote(Fds fds, KeySink* keys, PointerSink* pointer, OverlaySink* overla
   const auto vanished = [this] {
     if (goneEmitted_) return;
     goneEmitted_ = true;
-    emit gone();
+    // queued: the link can fail inside this constructor (device_->start() below writes), before whoever created this
+    // remote had a chance to connect to gone(); a lost gone() would leave a dead remote that is never replaced
+    QMetaObject::invokeMethod(this, [this] { emit gone(); }, Qt::QueuedConnection);
   };
   connect(link_, &HidppLink::closed, this, vanished);
   connect(keyboard_, &EvdevDevice::closed, this, vanished);
@@ -110,23 +114,45 @@ void Remote::applyDeviceConfig() {
   if (config_.cursorControl) device_->setPointerSpeed(config_.pointerSpeedLevel());
 }
 
+void Remote::settingsKnown() {
+  if (settingsKnown_) return;
+  settingsKnown_ = true;
+  announce();
+}
+
+void Remote::announce() {
+  // with the defaults instead of the user's settings, a remote set to "no vibration" would buzz at every login
+  if (!settingsKnown_ || !device_->isReady()) return;
+  if (!announcedConnection_) {  // once per connection, not after every wake-up
+    announcedConnection_ = true;
+    haptics_->connected();
+  }
+  checkBattery();
+}
+
 void Remote::onBattery(int percent, hidpp::BatteryState state) {
   qCInfo(lcRemote).noquote() << QStringLiteral("battery %1 % (%2)").arg(percent).arg(hidpp::batteryStateName(state));
-  const bool low = percent <= kBatteryLowPercent && !hidpp::isCharging(state);
+  checkBattery();
+  emit statusChanged();
+}
+
+void Remote::checkBattery() {
+  const hidpp::BatteryStatus b = device_->battery();
+  if (!settingsKnown_ || b.percent < 0) return;
+  const bool low = b.percent <= kBatteryLowPercent && !hidpp::isCharging(b.state);
   if (low && !warnedLowBattery_ && config_.batteryWarning) {
     warnedLowBattery_ = true;
     haptics_->pulses(Haptics::kBatteryLowPulses);
-  } else if (!low && (percent > kBatteryLowPercent + 5 || hidpp::isCharging(state))) {
+  } else if (!low && (b.percent > kBatteryLowPercent + 5 || hidpp::isCharging(b.state))) {
     warnedLowBattery_ = false;   // recovered: warn again the next time
   }
-  emit statusChanged();
 }
 
 void Remote::run(const Commands& commands) {
   Commands forOverlay;
   for (const Command& c : commands) {
     if (c.type == Command::Type::ForwardKey) {
-      if (keys_) keys_->tap(c.key == RemoteKey::Next ? KEY_RIGHT : KEY_LEFT);
+      if (forwardKeys_) keys_->tap(c.key == RemoteKey::Next ? KEY_RIGHT : KEY_LEFT);
       emit slideChanged();
     } else {
       forOverlay.push_back(c);
@@ -140,7 +166,7 @@ void Remote::onKeyboardKey(int code, int value) {
   if (value != 1) return;  // act on presses; the remote's keys are tapped
   if (code == KEY_RIGHT) run(state_.key(RemoteKey::Next));
   else if (code == KEY_LEFT) run(state_.key(RemoteKey::Back));
-  else if (keys_) keys_->tap(code);  // anything else is passed on unchanged
+  else if (forwardKeys_) keys_->tap(code);  // anything else is passed on unchanged
 }
 
 void Remote::onMouseKey(int code, int value) {

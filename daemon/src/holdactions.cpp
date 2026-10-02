@@ -13,7 +13,12 @@ HoldActions::HoldActions(KeySink* keys, PointerSink* pointer, QObject* parent) :
   connect(&repeat_, &QTimer::timeout, this, &HoldActions::stepRepeat);
 }
 
-void HoldActions::setConfig(const Config& config) { config_ = config; }
+void HoldActions::setConfig(const Config& config) {
+  config_ = config;
+  // the focused application's profile can change during a hold: a repeat the new action does not want stops
+  const HoldAction now = actionFor(side_);
+  if (held_ && now != HoldAction::FastForward && now != HoldAction::FastRewind) repeat_.stop();
+}
 
 HoldAction HoldActions::actionFor(Side side) const { return side == Side::Next ? config_.holdNext : config_.holdBack; }
 const QList<int>& HoldActions::shortcutFor(Side side) const { return side == Side::Next ? config_.shortcutNext : config_.shortcutBack; }

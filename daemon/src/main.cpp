@@ -7,6 +7,7 @@
 #include <QSocketNotifier>
 #include <csignal>
 #include <cstdio>
+#include <fcntl.h>
 #include <memory>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -44,7 +45,9 @@ int main(int argc, char** argv) {
   QCommandLineOption testFds(QStringLiteral("test-fds"),
                              QStringLiteral("TESTING: use pre-opened descriptors HIDRAW,KEYBOARD,MOUSE,KEYOUT instead of the real device and /dev/uinput."),
                              QStringLiteral("fds"));
-  QCommandLineOption noGrab(QStringLiteral("no-grab"), QStringLiteral("Do not capture the remote's input nodes exclusively."));
+  QCommandLineOption noGrab(QStringLiteral("no-grab"),
+                            QStringLiteral("Do not capture the remote's input nodes exclusively (Next/Back then reach the desktop directly, "
+                                           "and a short click clicks in the application under the pointer)."));
   QCommandLineOption verbose(QStringLiteral("verbose"), QStringLiteral("Log debug messages."));
   QCommandLineOption listDevices(QStringLiteral("list-devices"), QStringLiteral("Print the Spotlight device nodes that would be used, then exit."));
   parser.addOptions({testFds, noGrab, verbose, listDevices});
@@ -63,11 +66,13 @@ int main(int argc, char** argv) {
   if (!parser.isSet(verbose)) QLoggingCategory::setFilterRules(QStringLiteral("*.debug=false"));
 
   // clean shutdown: the buttons are given back to the system (undiverted) when the daemon stops
-  if (::pipe(signalPipe) != 0) return 1;
+  if (::pipe2(signalPipe, O_CLOEXEC | O_NONBLOCK) != 0) return 1;  // a signal storm must never block the handler
   struct sigaction sa {};
   sa.sa_handler = onSignal;
-  sigaction(SIGINT, &sa, nullptr);
-  sigaction(SIGTERM, &sa, nullptr);
+  sa.sa_flags = SA_RESTART;
+  for (const int sig : {SIGINT, SIGTERM, SIGHUP}) sigaction(sig, &sa, nullptr);
+  // a write to a descriptor whose other end is gone must fail with EPIPE, not kill the daemon (and skip the cleanup)
+  std::signal(SIGPIPE, SIG_IGN);
   QSocketNotifier signalNotifier(signalPipe[0], QSocketNotifier::Read);
   QObject::connect(&signalNotifier, &QSocketNotifier::activated, &app, [] { QCoreApplication::quit(); });
 
@@ -87,6 +92,7 @@ int main(int argc, char** argv) {
   Remote::Options options;
   options.grab = !parser.isSet(noGrab);
   options.config = service.config();
+  options.waitForSettings = true;   // the extension hands them over as soon as it sees the daemon on the bus
 
   std::unique_ptr<KeySink> keys;
   std::unique_ptr<PointerSink> pointer;
@@ -102,6 +108,7 @@ int main(int argc, char** argv) {
     keys = std::make_unique<FdKeySink>(f[3].toInt());
     pointer = std::make_unique<FdPointerSink>(f[3].toInt());
     options.grab = false;
+    options.forwardUngrabbed = true;  // the "nodes" are the test's sockets: nobody else sees these keys
     testRemote = new Remote({f[0].toInt(), f[1].toInt(), f[2].toInt()}, keys.get(), pointer.get(), &overlay, options, &app);
     service.setRemote(testRemote);
   } else {

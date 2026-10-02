@@ -25,7 +25,7 @@ class PresentationTimer : public QObject {
   void pause();
   void resume();
   void reset();   ///< back to idle with the full time
-  void tick();    ///< check the clock; called every 250 ms by the internal timer
+  void tick();    ///< check the clock; called by the internal timer whenever the shown second changes
 
   State state() const { return state_; }
   int remainingSeconds() const;
@@ -42,6 +42,8 @@ class PresentationTimer : public QObject {
  private:
   void setState(State s);
   qint64 now() const;
+  qint64 leftMs() const;   ///< while running
+  void scheduleTick();
 
   Clock clock_;
   State state_ = State::Idle;

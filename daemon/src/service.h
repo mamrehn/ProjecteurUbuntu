@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QTimer>
 
 #include "config.h"
 #include "presentationtimer.h"
@@ -18,6 +19,9 @@ namespace projecteur {
 class Service : public QObject {
   Q_OBJECT
  public:
+  /// How long a new remote waits for the extension's settings before it announces itself with the defaults.
+  static constexpr int kSettingsGraceMs = 3000;
+
   explicit Service(PresentationTimer::Clock clock = {}, QObject* parent = nullptr);
 
   /// The remote that appeared (nullptr: it is gone). The current settings are applied to it at once.
@@ -37,6 +41,7 @@ class Service : public QObject {
   void timerReset();
   void vibrate(int pulses);  ///< for the "test vibration" button in the settings
   void vibrateMinute(int minute);  ///< play the minute code of the given minute (to learn it)
+  void setSettingsGraceMs(int ms) { settingsGrace_.setInterval(ms); }   ///< tests
 
  signals:
   void statusChanged(const QString& statusJson);
@@ -44,11 +49,14 @@ class Service : public QObject {
  private:
   void onSlideChange();
   void emitStatus();
+  void markSettingsKnown();   ///< the extension handed its settings over, or it did not come in time
 
   Config config_;
   PresentationTimer timer_;
   QPointer<Remote> remote_;
   QString lastStatus_;
+  bool settingsKnown_ = false;
+  QTimer settingsGrace_;
 };
 
 }  // namespace projecteur

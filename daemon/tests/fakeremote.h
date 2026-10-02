@@ -5,6 +5,7 @@
 #include <QList>
 #include <QObject>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QtTest>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -26,6 +27,7 @@ class FakeRemote : public QObject {
       fd_ = -1;
     }
   }
+  int fd() const { return fd_; }
   void notify(const QByteArray& m) {
     const ssize_t n = ::write(fd_, m.constData(), static_cast<size_t>(m.size()));
     QVERIFY(n == m.size());
@@ -40,6 +42,7 @@ class FakeRemote : public QObject {
   int pointerSpeed = 0x14;
 
   int ignoreFirst = 0;         ///< a sleeping remote does not answer the first requests
+  int answerDelayMs = 0;       ///< an idle remote acts on a request at once but answers late (0.4 to 0.85 s measured)
   bool longOnly = false;       ///< Bluetooth: short (7 byte) reports are not accepted
   QList<QByteArray> requests;  ///< everything received, answered or not
 
@@ -79,6 +82,8 @@ class FakeRemote : public QObject {
         reply = longAnswer({uint8_t(batteryPercent), uint8_t(batteryNext), uint8_t(batteryState)});
       } else if (index == kPointerSpeedIndex && function == 0 && features.contains(0x2205)) {
         reply = longAnswer({uint8_t(pointerSpeed), 0x00});
+      } else if (index == kPointerSpeedIndex && function == 1 && features.contains(0x2205)) {
+        pointerSpeed = static_cast<uint8_t>(m[4]);   // setSpeed: remembered, and echoed below
       } else if (index == kFirmwareIndex && features.contains(0x0003)) {
         if (function == 0) {
           reply = longAnswer({3});
@@ -89,10 +94,17 @@ class FakeRemote : public QObject {
           else reply = longAnswer({0x05});
         }
       }
-      // the daemon may already have closed its end (shutdown): answering then fails, which is fine
-      const ssize_t w = ::write(fd_, reply.constData(), static_cast<size_t>(reply.size()));
-      (void)w;
+      if (answerDelayMs > 0)
+        QTimer::singleShot(answerDelayMs, this, [this, reply] { answer(reply); });
+      else
+        answer(reply);
     }
+  }
+  void answer(const QByteArray& reply) {
+    if (fd_ < 0) return;
+    // the daemon may already have closed its end (shutdown): answering then fails, which is fine
+    const ssize_t w = ::write(fd_, reply.constData(), static_cast<size_t>(reply.size()));
+    (void)w;
   }
   int fd_;
   QSocketNotifier* notifier_ = nullptr;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <QJsonArray>
+#include <QRandomGenerator>
 #include <QtTest>
 
 #include "config.h"
@@ -125,6 +126,48 @@ class ConfigTest : public QObject {
     QCOMPARE(c.pointerSpeedLevel(), uint8_t(0x19));
     c.pointerSpeed = 35;
     QVERIFY(c.pointerSpeedLevel() >= 0x10 && c.pointerSpeedLevel() <= 0x19);
+  }
+
+  void whateverArrivesOverDBusTheSettingsStayInTheirRanges() {
+    // SetConfig takes JSON from anything on the session bus: random keys, types and values, many times over, must
+    // never crash and never leave a value outside its range (property test with a fixed seed)
+    const Config base;
+    const QStringList keys = base.toJson().keys();
+    QRandomGenerator rng(0xc0f1);
+    const auto randomValue = [&](int depth) -> QJsonValue {
+      switch (rng.bounded(depth > 0 ? 7 : 6)) {
+        case 0: return QJsonValue(rng.bounded(2) == 1);
+        case 1: return QJsonValue(rng.bounded(-1000, 1000));
+        case 2: return QJsonValue(rng.generateDouble() * 2e9 - 1e9);
+        case 3: return QJsonValue(QStringLiteral("fast-forward"));
+        case 4: return QJsonValue(QString::number(rng.bounded(100)));
+        case 5: return QJsonValue(QJsonValue::Null);
+        default: {
+          QJsonArray a;
+          for (int i = rng.bounded(9); i > 0; --i) a.append(rng.bounded(-5, 0x320));
+          return a;
+        }
+      }
+    };
+    Config c = base;
+    for (int round = 0; round < 20000; ++round) {
+      QJsonObject o;
+      for (int i = rng.bounded(1, 6); i > 0; --i) o[keys[rng.bounded(keys.size())]] = randomValue(1);
+      if (rng.bounded(10) == 0) o[QStringLiteral("unknown-key")] = randomValue(1);
+      c = Config::fromJson(o, c);
+      QVERIFY(c.pointerSpeed >= 0 && c.pointerSpeed <= 100);
+      QVERIFY(c.vibrationPercent >= 0 && c.vibrationPercent <= 100);
+      QVERIFY(c.timerMinutes >= 1 && c.timerMinutes <= 600);
+      QVERIFY(c.timerAlerts.size() <= 3);
+      for (int a : std::as_const(c.timerAlerts)) QVERIFY(a >= 0 && a <= 600);
+      for (const QList<int>* keysOf : {&c.shortcutNext, &c.shortcutBack}) {
+        QVERIFY(keysOf->size() <= 6);
+        for (int k : *keysOf) QVERIFY(k >= 1 && k <= 0x2ff);
+      }
+      QVERIFY(c.pointerSpeedLevel() >= 0x10 && c.pointerSpeedLevel() <= 0x19);
+      QVERIFY(c.pixelsPerCount() > 0);
+      QCOMPARE(Config::fromJson(c.toJson(), Config{}), c);   // and what the daemon reports, it would accept again
+    }
   }
 
   void actionNamesRoundTrip() {

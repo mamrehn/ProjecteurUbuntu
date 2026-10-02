@@ -14,8 +14,18 @@ PresentationTimer::PresentationTimer(Clock clock, QObject* parent) : QObject(par
     clock_ = [elapsed] { return elapsed->elapsed(); };
   }
   remainingMs_ = qint64(minutes_) * 60 * 1000;
-  ticker_.setInterval(250);
+  ticker_.setSingleShot(true);
+  ticker_.setTimerType(Qt::PreciseTimer);   // never early: it is set to the moment the shown second changes
   connect(&ticker_, &QTimer::timeout, this, &PresentationTimer::tick);
+}
+
+qint64 PresentationTimer::leftMs() const { return qMax<qint64>(deadline_ - now(), 0); }
+
+void PresentationTimer::scheduleTick() {
+  // Everything the timer announces (the shown second, whole minutes, alerts, the end) happens when the time left
+  // crosses a whole second, so wake up exactly then instead of polling (remainingSeconds() rounds up).
+  const qint64 untilNextSecond = leftMs() % 1000;
+  ticker_.start(static_cast<int>(untilNextSecond == 0 ? 1000 : untilNextSecond));
 }
 
 qint64 PresentationTimer::now() const { return clock_(); }
@@ -40,6 +50,13 @@ void PresentationTimer::configure(int minutes, QList<int> alertMinutes) {
   alertMinutes.removeIf([](int m) { return m <= 0; });   // a slot that is off
   std::sort(alertMinutes.begin(), alertMinutes.end(), std::greater<int>());
   alerts_ = alertMinutes;
+  if (state_ == State::Running || state_ == State::Paused) {
+    // an alert added during the talk for a moment that has already passed is not announced: "10 minutes left"
+    // buzzed with 4 minutes left would be wrong
+    const qint64 left = state_ == State::Running ? leftMs() : remainingMs_;
+    for (int a : std::as_const(alerts_))
+      if (!alertsFired_.contains(a) && left <= qint64(a) * 60 * 1000) alertsFired_.append(a);
+  }
   if (state_ == State::Idle || state_ == State::Finished) {
     minutes_ = qMax(minutes, 1);
     if (state_ == State::Idle) {
@@ -50,7 +67,7 @@ void PresentationTimer::configure(int minutes, QList<int> alertMinutes) {
 }
 
 int PresentationTimer::remainingSeconds() const {
-  const qint64 ms = state_ == State::Running ? qMax<qint64>(deadline_ - now(), 0) : remainingMs_;
+  const qint64 ms = state_ == State::Running ? leftMs() : remainingMs_;
   return static_cast<int>((ms + 999) / 1000);  // round up: "0:01" until it is really over
 }
 
@@ -63,13 +80,12 @@ void PresentationTimer::start() {
     if (qint64(a) * 60 * 1000 >= remainingMs_) alertsFired_.append(a);
   lastSecond_ = -1;
   setState(State::Running);
-  ticker_.start();
   tick();
 }
 
 void PresentationTimer::pause() {
   if (state_ != State::Running) return;
-  remainingMs_ = qMax<qint64>(deadline_ - now(), 0);
+  remainingMs_ = leftMs();
   ticker_.stop();
   setState(State::Paused);
   emit remainingChanged(remainingSeconds());
@@ -79,7 +95,7 @@ void PresentationTimer::resume() {
   if (state_ != State::Paused) return;
   deadline_ = now() + remainingMs_;
   setState(State::Running);
-  ticker_.start();
+  scheduleTick();
 }
 
 void PresentationTimer::reset() {
@@ -94,7 +110,7 @@ void PresentationTimer::reset() {
 
 void PresentationTimer::tick() {
   if (state_ != State::Running) return;
-  const qint64 left = qMax<qint64>(deadline_ - now(), 0);
+  const qint64 left = leftMs();
   const int seconds = remainingSeconds();
   if (seconds != lastSecond_) {
     lastSecond_ = seconds;
@@ -117,7 +133,9 @@ void PresentationTimer::tick() {
     remainingMs_ = 0;
     setState(State::Finished);
     emit finished();
+    return;
   }
+  scheduleTick();
 }
 
 }  // namespace projecteur

@@ -39,6 +39,7 @@ class HidppLink : public QObject {
     int timeoutMs;
   };
   void onReadable();
+  void closeLink();  ///< the device is gone: close the descriptor and say so, once
   void startNext();
   void finishFront(const QByteArray& answer);
 
@@ -46,6 +47,7 @@ class HidppLink : public QObject {
   QSocketNotifier* notifier_ = nullptr;
   std::deque<Pending> queue_;
   bool inFlight_ = false;
+  bool writeFailing_ = false;  ///< a failed write was reported; not again until one succeeds
   QTimer timeout_;
 };
 
