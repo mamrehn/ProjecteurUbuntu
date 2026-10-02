@@ -45,7 +45,8 @@ Either way, **log out and in once** (GNOME Shell on Wayland only notices a new e
 and changes nothing; `./setup.sh --uninstall` removes everything (for a release install: `sudo apt remove projecteur-gnome`).
 GitHub Actions builds, tests and smoke-tests the package on Ubuntu 26.04 for every push to `main`
 (`.github/workflows/gnome-deb.yml`); the build of a commit is a download in the run's "Artifacts" (login required).
-A release is made by pushing a tag `gnome-vX.Y.Z`. The package replaces Ubuntu's Qt5 `projecteur`
+A release is made by writing its notes to `packaging/release-notes/X.Y.Z.md` and pushing a tag `gnome-vX.Y.Z`
+(the workflow refuses a tag without notes). The package replaces Ubuntu's Qt5 `projecteur`
 package (the two cannot run together). Without `--enable` nothing is switched on: run `projecteur-setup enable` later.
 
 If anything misbehaves, `projecteur-setup disable` returns the remote to a plain keyboard and mouse at once.

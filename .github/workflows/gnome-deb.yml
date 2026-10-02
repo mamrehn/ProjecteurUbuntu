@@ -57,6 +57,7 @@ jobs:
             [[ "$GITHUB_REF_NAME" =~ ^gnome-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::a release tag looks like gnome-v1.2.3, not $GITHUB_REF_NAME"; exit 1; }
             [ "$version" = "${GITHUB_REF_NAME#gnome-v}" ] || { echo "::error::tag $GITHUB_REF_NAME, but the version script says $version"; exit 1; }
             git merge-base --is-ancestor HEAD origin/main || { echo "::error::the tagged commit is not on main"; exit 1; }
+            [ -s "packaging/release-notes/$version.md" ] || { echo "::error::no release notes: write packaging/release-notes/$version.md"; exit 1; }
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Package version: $version"
@@ -128,6 +129,6 @@ jobs:
           deb="projecteur-gnome_${VERSION}_amd64.deb"
           test -f "dist/$deb"
           (cd dist && sha256sum -c SHA256SUMS)
-          sed "s/@DEB@/$deb/g" packaging/release-notes.md.in > notes.md
+          { cat "packaging/release-notes/$VERSION.md"; echo; sed "s/@DEB@/$deb/g" packaging/release-notes.md.in; } > notes.md
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Projecteur for GNOME $VERSION" --notes-file notes.md
