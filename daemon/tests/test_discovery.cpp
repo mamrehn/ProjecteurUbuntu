@@ -133,7 +133,96 @@ class DiscoveryTest : public QObject {
     QVERIFY(!n.complete());
     QVERIFY(n.keyboard.isEmpty() && n.mouse.isEmpty());
   }
+
+  // ---- parsing details ------------------------------------------------------------------------------
+  void theEventNodeIsFoundAnywhereAmongTheHandlers() {
+    const QString proc = QStringLiteral(
+        "I: Bus=0003 Vendor=046D Product=C53E Version=0111\n"      // upper case hex
+        "N: Name=\"Logitech USB Receiver\"\n"
+        "H: Handlers=sysrq kbd event12 leds \n"                   // not the last handler, trailing blank
+        "\n"
+        "I: Bus=0003 Vendor=046d Product=c53e Version=0111\n"
+        "N: Name=\"Logitech USB Receiver Mouse\"\n"
+        "H: Handlers=mouse2 eventx event13x event7\n");          // only a real eventN counts
+    const SpotlightNodes n = findUsbReceiver(proc, QStringLiteral("/nonexistent"));
+    QCOMPARE(n.keyboard, QStringLiteral("/dev/input/event12"));
+    QCOMPARE(n.mouse, QStringLiteral("/dev/input/event7"));
+  }
+
+  void aNodeWithoutEventHandlerOrNameIsSkipped() {
+    const QString proc = QStringLiteral(
+        "I: Bus=0003 Vendor=046d Product=c53e Version=0111\n"
+        "N: Name=\"Logitech USB Receiver\"\n"
+        "H: Handlers=sysrq kbd leds\n"
+        "\n"
+        "I: Bus=0003 Vendor=046d Product=c53e Version=0111\n"
+        "H: Handlers=event9\n");
+    const SpotlightNodes n = findUsbReceiver(proc, QStringLiteral("/nonexistent"));
+    QVERIFY(n.keyboard.isEmpty() && n.mouse.isEmpty());
+  }
+
+  void sysfsIsOnlySearchedWhenTheRemoteIsListed() {
+    // the watcher looks whenever any device node changes: without a Spotlight in /proc it must not walk sysfs at all
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QString hid = root.path() + QStringLiteral("/devices/uhid/0005:046D:B503.0005");
+    write(hid + QStringLiteral("/uevent"), "HID_ID=0005:0000046D:0000B503\n");
+    QDir().mkpath(root.path() + QStringLiteral("/class/hidraw/hidraw1"));
+    QVERIFY(QFile::link(hid, root.path() + QStringLiteral("/class/hidraw/hidraw1/device")));
+    const QString noRemote = QStringLiteral("I: Bus=0011 Vendor=0001 Product=0001\nN: Name=\"kbd\"\nH: Handlers=event2\n");
+    QVERIFY(findSpotlight(noRemote, root.path() + QStringLiteral("/class/hidraw")).hidraw.isEmpty());
+    QCOMPARE(findSpotlight(QString::fromLatin1(kProcBluetooth), root.path() + QStringLiteral("/class/hidraw")).hidraw,
+             QStringLiteral("/dev/hidraw1"));
+  }
+
+  void theUsbReceiverIsPreferredOverABluetoothRemote() {
+    QTemporaryDir root;
+    QVERIFY(root.isValid());
+    const QString iface = root.path() + QStringLiteral("/devices/3-4:1.2");
+    write(iface + QStringLiteral("/bInterfaceNumber"), "02\n");
+    write(iface + QStringLiteral("/0003:046D:C53E.0007/uevent"), "HID_ID=0003:0000046D:0000C53E\n");
+    QDir().mkpath(root.path() + QStringLiteral("/class/hidraw/hidraw3"));
+    QVERIFY(QFile::link(iface + QStringLiteral("/0003:046D:C53E.0007"), root.path() + QStringLiteral("/class/hidraw/hidraw3/device")));
+    const SpotlightNodes n = findSpotlight(QString::fromLatin1(kProc) + QStringLiteral("\n") + QString::fromLatin1(kProcBluetooth),
+                                           root.path() + QStringLiteral("/class/hidraw"));
+    QVERIFY(n.complete());
+    QVERIFY(!n.bluetooth);
+    QCOMPARE(n.hidraw, QStringLiteral("/dev/hidraw3"));
+  }
+
+  // ---- the watcher: event driven, no polling while nothing changes ------------------------------------
+  void theWatcherLooksWhenANodeAppearsAndOtherwiseSleeps() {
+    QTemporaryDir dev;
+    QVERIFY(dev.isValid());
+    RemoteWatcher w(nullptr, nullptr, nullptr, {});
+    int looked = 0;
+    w.setFinder([&] { ++looked; return SpotlightNodes{}; }, {dev.path()});
+    w.start(60 * 60 * 1000);
+    QCOMPARE(looked, 1);                       // once at the start
+    QTest::qWait(2500);                        // the old code looked every 2 s
+    QCOMPARE(looked, 1);
+    write(dev.path() + QStringLiteral("/event21"), "");   // a node appears ...
+    write(dev.path() + QStringLiteral("/event22"), "");   // ... and another one right after: one look for both
+    QTRY_COMPARE(looked, 2);
+    QTest::qWait(RemoteWatcher::kSettleMs + 200);
+    QCOMPARE(looked, 2);
+  }
+
+  void nodesThatCannotBeOpenedYetAreTriedAgainAFewTimes() {
+    // udev hands a new node to the user a moment after it appears; until then opening it fails
+    QTemporaryDir dev;
+    QVERIFY(dev.isValid());
+    RemoteWatcher w(nullptr, nullptr, nullptr, {});
+    int looked = 0;
+    const QString missing = dev.path() + QStringLiteral("/missing");
+    w.setFinder([&] { ++looked; return SpotlightNodes{missing, missing, missing, false}; }, {dev.path()});
+    w.start(60 * 60 * 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(looked, 1 + RemoteWatcher::kOpenRetries, (RemoteWatcher::kOpenRetries + 4) * RemoteWatcher::kRetryMs);
+    QTest::qWait(3 * RemoteWatcher::kRetryMs);
+    QCOMPARE(looked, 1 + RemoteWatcher::kOpenRetries);   // then it gives up until something changes
+    QVERIFY(!w.connected());
+  }
 };
 
-QTEST_APPLESS_MAIN(DiscoveryTest)
+QTEST_GUILESS_MAIN(DiscoveryTest)
 #include "test_discovery.moc"

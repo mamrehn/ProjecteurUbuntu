@@ -21,11 +21,24 @@ QString toString(Mode mode) {
 
 OverlayClient::OverlayClient(const QDBusConnection& bus, QObject* parent) : QObject(parent), bus_(bus) {}
 
-void OverlayClient::call(const QString& method, const QVariantList& arguments) {
+namespace {
+QDBusMessage overlayCall(const QString& method, const QVariantList& arguments) {
   QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("org.projecteur.Overlay"),
                                                     QStringLiteral("/org/projecteur/Overlay"),
                                                     QStringLiteral("org.projecteur.Overlay1"), method);
   msg.setArguments(arguments);
+  return msg;
+}
+}  // namespace
+
+void OverlayClient::post(const QString& method, const QVariantList& arguments) {
+  // QDBusConnection::send() marks a method call "no reply expected": the shell does not answer it. The order with the
+  // calls below is kept (one connection, one queue), so a movement never overtakes the ShowAtPointer before it.
+  bus_.send(overlayCall(method, arguments));
+}
+
+void OverlayClient::call(const QString& method, const QVariantList& arguments) {
+  const QDBusMessage msg = overlayCall(method, arguments);
   auto* watcher = new QDBusPendingCallWatcher(bus_.asyncCall(msg, 2000), this);
   connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, method](QDBusPendingCallWatcher* w) {
     const QDBusPendingReply<> reply = *w;
@@ -47,7 +60,7 @@ void OverlayClient::apply(const Commands& commands) {
   for (const Command& c : commands) {
     switch (c.type) {
       case Command::Type::ShowAtPointer: call(QStringLiteral("ShowAtPointer"), {toString(c.mode)}); break;
-      case Command::Type::MoveBy: call(QStringLiteral("MoveBy"), {c.dx, c.dy}); break;
+      case Command::Type::MoveBy: post(QStringLiteral("MoveBy"), {c.dx, c.dy}); break;
       case Command::Type::Hide: call(QStringLiteral("Hide")); break;
       case Command::Type::SetMode: call(QStringLiteral("SetMode"), {toString(c.mode)}); break;
       case Command::Type::Recenter: call(QStringLiteral("Recenter")); break;

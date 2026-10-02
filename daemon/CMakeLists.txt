@@ -86,6 +86,10 @@ add_executable(test_holdactions tests/test_holdactions.cpp)
 target_link_libraries(test_holdactions PRIVATE logic Qt6::Test)
 add_test(NAME holdactions COMMAND test_holdactions)
 
+add_executable(test_overlayclient tests/test_overlayclient.cpp)
+target_link_libraries(test_overlayclient PRIVATE daemoncore Qt6::Test)
+add_test(NAME overlayclient COMMAND test_overlayclient)
+
 add_executable(test_service tests/test_service.cpp tests/fakeremote.h)
 target_link_libraries(test_service PRIVATE daemoncore Qt6::Test)
 add_test(NAME service COMMAND test_service)
