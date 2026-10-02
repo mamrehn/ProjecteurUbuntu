@@ -18,6 +18,12 @@ RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_UNIX
 SystemCallArchitectures=native
 MemoryDenyWriteExecute=yes
+# Only the system calls of an ordinary service (systemd's @system-service set), without the privileged and resource
+# control ones. All 83 that the daemon was seen to make (traced through the test suite: devices, D-Bus, discovery)
+# are in what is left. Anything else fails with EPERM instead of killing the daemon.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=graphical-session.target

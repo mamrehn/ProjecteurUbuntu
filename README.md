@@ -66,6 +66,17 @@ Intel iGPU was available); what Windows does on several monitors (this fork dims
 on); timing of the hold actions against the Windows app; the Spotlight 2, which is not supported. Details and the
 input measurements: [doc/ubuntu/INPUT-MODEL.md](doc/ubuntu/INPUT-MODEL.md), plan: [doc/ubuntu/PLAN.md](doc/ubuntu/PLAN.md).
 
+## What the package changes on your system
+
+- **Device access** (udev rule `55-projecteurd.rules`): the user logged in at the machine may open the remote's device
+  nodes, and **`/dev/uinput`**, through which the daemon sends Next/Back and the hold actions on as a virtual keyboard.
+  The second one has a side effect worth knowing: *any* program you run can then create virtual keyboards and mice, as
+  with Steam's controller rules (`steam-devices`). Only the local, active session gets this (systemd's `uaccess`), never
+  an SSH login. `sudo apt remove projecteur-gnome` takes it back.
+- **The daemon** runs as a systemd *user* service with your rights only: no network (Unix sockets only), no new
+  privileges, no writable and executable memory, and only the system calls of an ordinary service (`SystemCallFilter`).
+- **The extension** draws inside GNOME Shell and takes no input: clicks and keys go to the windows below.
+
 ## Safety net
 
 GNOME Shell writes `$XDG_RUNTIME_DIR/gnome-shell-disable-extensions` while it enables extensions; if the shell crashes

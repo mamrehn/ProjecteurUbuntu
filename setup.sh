@@ -35,7 +35,7 @@ usage() { sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --deb) [ $# -ge 2 ] || die "--deb needs a file"; DEB="$2"; shift ;;
+    --deb) [ $# -ge 2 ] || die "--deb needs a file"; DEB="$(realpath -m -- "$2")"; shift ;;   # before the cd below
     --enable) ENABLE=1 ;;
     --check) CHECK=1 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -125,6 +125,7 @@ fi
 
 echo
 echo "Package:"
+# DEB is an absolute path: apt reads a bare name (no slash) as a package name, not as a file
 if [ -z "$DEB" ]; then build_deb; else [ -f "$DEB" ] || die "no such file: $DEB"; ok "using $DEB"; fi
 
 echo
