@@ -19,14 +19,15 @@ export const KEYS = {
     'freeze-effects': {type: 'b', def: true, scope: 'daemon'},
     'hold-next-action': {type: 's', def: 'start-presentation', choices: null, scope: 'daemon'},
     'hold-back-action': {type: 's', def: 'blank-screen', choices: null, scope: 'daemon'},
-    'hold-next-shortcut': {type: 'ai', def: [], scope: 'daemon'},
-    'hold-back-shortcut': {type: 'ai', def: [], scope: 'daemon'},
+    // evdev key codes, modifiers first; the daemon accepts 1 .. 0x2ff (KEY_MAX) and at most six keys
+    'hold-next-shortcut': {type: 'ai', def: [], items: [1, 0x2ff], maxItems: 6, scope: 'daemon'},
+    'hold-back-shortcut': {type: 'ai', def: [], items: [1, 0x2ff], maxItems: 6, scope: 'daemon'},
     'vibration-intensity': {type: 'i', def: 50, min: 0, max: 100, scope: 'daemon'},
     'battery-warning': {type: 'b', def: true, scope: 'daemon'},
     'timer-enabled': {type: 'b', def: false, scope: 'daemon'},
     'timer-minutes': {type: 'i', def: 30, min: 1, max: 600, scope: 'daemon'},
     'timer-auto-start': {type: 'b', def: true, scope: 'daemon'},
-    'timer-alerts': {type: 'ai', def: [5], itemMax: 600, scope: 'daemon'},   // up to three slots, minutes before the end; 0 = off
+    'timer-alerts': {type: 'ai', def: [5], items: [0, 600], maxItems: 3, scope: 'daemon'},   // three slots, minutes before the end; 0 = off
     'timer-notification': {type: 'b', def: true, scope: 'daemon'},
     'timer-minute-pulses': {type: 'b', def: false, scope: 'daemon'},
     // not part of a profile
@@ -60,8 +61,8 @@ export function validValue(key, value) {
         if (COLOR_KEYS.includes(key))
             return typeof value === 'string' && COLOR_PATTERN.test(value);
         return typeof value === 'string' && (!k.choices || k.choices.includes(value));
-    case 'ai':
-        return Array.isArray(value) && value.length <= (k.itemMax ? 3 : 6) && value.every(x => Number.isInteger(x) && x >= 0 && (!k.itemMax || x <= k.itemMax));
+    case 'ai':   // the same limits as the daemon's: a value it would refuse must not get into a profile
+        return Array.isArray(value) && value.length <= k.maxItems && value.every(x => Number.isInteger(x) && x >= k.items[0] && x <= k.items[1]);
     }
     return false;
 }

@@ -8,6 +8,7 @@ import System from 'system';
 import {KEYS, HOLD_ACTIONS, defaults, validValue, parseProfiles, effectiveValues, daemonConfig, overlayConfig, isProfileKey,
     addProfile, removeProfile, setOverride, clearOverride, serializeProfiles, alertsToSlots, slotsToAlerts, isModifierCode}
     from '../../gnome-shell/projecteur-overlay@mamrehn.github.io/settingsModel.js';
+import {describeStatus, formatTime} from '../../gnome-shell/projecteur-overlay@mamrehn.github.io/statusText.js';
 
 let failures = 0;
 function check(name, ok, detail = '') {
@@ -107,6 +108,19 @@ check('alerts from slots keep their positions (a row being edited must not move)
 check('slots are clamped and made whole', eq(slotsToAlerts([-3, 1000, 2.5]), [0, 600, 0]));
 check('a list with zeros is a valid timer-alerts value, one with a fourth slot or a value over 600 is not', validValue('timer-alerts', [0, 5, 0]) && !validValue('timer-alerts', [1, 2, 3, 4]) && !validValue('timer-alerts', [601]));
 check('modifier codes', isModifierCode(29) && isModifierCode(42) && isModifierCode(125) && !isModifierCode(25));
+
+print('== the daemon\'s limits (a value it refuses would drop the whole key with a warning)');
+check('a shortcut has key codes 1 .. 0x2ff', validValue('hold-next-shortcut', [1, 0x2ff]) && !validValue('hold-next-shortcut', [0]) && !validValue('hold-back-shortcut', [0x300]));
+check('a shortcut has at most six keys', validValue('hold-next-shortcut', [29, 42, 56, 125, 97, 25]) && !validValue('hold-next-shortcut', [29, 42, 56, 125, 97, 54, 25]));
+check('a profile with a key code 0 keeps its other settings', eq(parseProfiles('{"a.desktop": {"hold-next-shortcut": [0], "pointer-speed": 50}}'), {'a.desktop': {'pointer-speed': 50}}));
+
+print('== status text');
+check('times', formatTime(0) === '00:00' && formatTime(59.6) === '01:00' && formatTime(3599) === '59:59' && formatTime(3600) === '1:00:00' && formatTime(-5) === '00:00');
+const timer = (state, remaining) => ({connected: true, connection: 'usb', timer: {enabled: true, state, remaining, total: 1800}});
+check('the top bar label has one format while running and at the end', describeStatus(timer('running', 65)).label === '01:05' && describeStatus(timer('finished', 0)).label === '00:00');
+check('no label while idle', describeStatus(timer('idle', 1800)).label === '' && describeStatus(timer('idle', 1800)).timer === 'Timer 30:00 (ready)');
+check('no daemon', describeStatus(null).connection === 'Daemon not running');
+check('battery', describeStatus({connected: true, connection: 'bluetooth', battery: {percent: 40, charging: true}, timer: {enabled: false, state: 'idle'}}).battery === 'Battery 40 % (charging)');
 
 print(failures ? `FAILED: ${failures}` : 'all checks passed');
 System.exit(failures ? 1 : 0);

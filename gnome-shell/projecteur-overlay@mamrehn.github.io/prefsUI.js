@@ -10,7 +10,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {
-    HOLD_ACTIONS, KEYS, addProfile, alertsToSlots, clearOverride, effectiveValues, isModifierCode, parseProfiles, removeProfile,
+    HOLD_ACTIONS, KEYS, addProfile, alertsToSlots, clearOverride, isModifierCode, parseProfiles, removeProfile,
     serializeProfiles, setOverride, slotsToAlerts,
 } from './settingsModel.js';
 import {describeStatus} from './statusText.js';
@@ -139,6 +139,15 @@ export class SettingsStore {
     disconnect(id) { this._settings.disconnect(id); }
 }
 
+// Every row of every profile reads the profiles on every change of any setting (and a slider changes a setting many
+// times a second): parse the text once per distinct value. The parsed object is never modified (see settingsModel.js).
+let profilesCache = {text: null, parsed: {}};
+function cachedProfiles(text) {
+    if (text !== profilesCache.text)
+        profilesCache = {text, parsed: parseProfiles(text)};
+    return profilesCache.parsed;
+}
+
 /** The settings of one application: its own values where it has them, the general ones otherwise. */
 export class ProfileStore {
     constructor(settings, appId) {
@@ -147,16 +156,15 @@ export class ProfileStore {
     }
 
     get isProfile() { return true; }
-    _profiles() { return parseProfiles(this._settings.get_string('profiles')); }
+    _profiles() { return cachedProfiles(this._settings.get_string('profiles')); }
     _write(profiles) { this._settings.set_string('profiles', serializeProfiles(profiles)); }
-    _general() {
-        const out = {};
-        for (const key of Object.keys(KEYS))
-            out[key] = this._settings.get_value(key).recursiveUnpack();
-        return out;
-    }
 
-    get(key) { return effectiveValues(this._general(), this._profiles(), this._appId)[key]; }
+    /** effectiveValues() for one key: reads only that key, not all of them. */
+    get(key) {
+        const own = this._profiles()[this._appId];
+        const value = own && key in own ? own[key] : this._settings.get_value(key).recursiveUnpack();
+        return Array.isArray(value) ? [...value] : value;
+    }
     set(key, value) { this._write(setOverride(addProfile(this._profiles(), this._appId), this._appId, key, value)); }
     isOverridden(key) { return key in (this._profiles()[this._appId] ?? {}); }
     reset(key) { this._write(clearOverride(this._profiles(), this._appId, key)); }
@@ -422,7 +430,8 @@ function buildProfilesPage(settings, ctx, registry) {
         const profiles = parseProfiles(settings.get_string('profiles'));
         for (const appId of Object.keys(profiles).sort()) {
             const store = new ProfileStore(settings, appId);
-            const expander = new Adw.ExpanderRow({title: appName(appId), subtitle: appId});
+            // row titles are Pango markup: "Tom & Jerry" or an id typed into the profiles text must not break them
+            const expander = new Adw.ExpanderRow({title: GLib.markup_escape_text(appName(appId), -1), subtitle: GLib.markup_escape_text(appId, -1)});
             expander.add_prefix(new Gtk.Image({gicon: appIcon(appId), pixel_size: 32}));
             const profileRegistry = newRegistry();
             for (const p of PAGES)
@@ -475,7 +484,7 @@ function chooseApplication(parent, onChosen) {
     const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, css_classes: ['boxed-list']});
     const scroller = new Gtk.ScrolledWindow({vexpand: true, child: list});
     for (const app of installedApps()) {
-        const row = new Adw.ActionRow({title: GLib.markup_escape_text(app.get_name(), -1), subtitle: app.get_id(), activatable: true});
+        const row = new Adw.ActionRow({title: GLib.markup_escape_text(app.get_name(), -1), subtitle: GLib.markup_escape_text(app.get_id(), -1), activatable: true});
         row.add_prefix(new Gtk.Image({gicon: app.get_icon() ?? new Gio.ThemedIcon({name: 'application-x-executable-symbolic'}), pixel_size: 32}));
         row._appId = app.get_id();
         row._search = `${app.get_name()} ${app.get_id()}`.toLowerCase();
@@ -501,6 +510,7 @@ function buildRemotePage(ctx, registry) {
     const page = new Adw.PreferencesPage({title: 'Remote', icon_name: 'input-mouse-symbolic', name: 'remote'});
     const daemonGroup = new Adw.PreferencesGroup({title: 'Background service'});
     const daemonRow = new Adw.ActionRow({title: 'projecteurd'});
+    daemonRow.add_css_class('property');
     daemonGroup.add(daemonRow);
     page.add(daemonGroup);
 
@@ -537,7 +547,6 @@ function buildRemotePage(ctx, registry) {
     const update = status => {
         const d = describeStatus(status);
         daemonRow.subtitle = status ? 'Running' : 'Not running. Start it with: systemctl --user start projecteurd';
-        daemonRow.add_css_class('property');
         show(connection, d.connection);
         show(battery, d.battery.replace(/^Battery /, ''));
         show(firmware, d.firmware.replace(/^Firmware /, ''));

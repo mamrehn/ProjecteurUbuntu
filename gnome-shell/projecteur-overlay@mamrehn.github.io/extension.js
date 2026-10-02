@@ -14,8 +14,10 @@ export default class ProjecteurOverlayExtension extends Extension {
     enable() {
         // Test builds only (the headless harness sets this variable): let the harness take screenshots
         // through the shell's D-Bus API, which otherwise only answers a fixed list of system services.
-        if (GLib.getenv('PROJECTEUR_OVERLAY_TESTING') === '1')
+        if (GLib.getenv('PROJECTEUR_OVERLAY_TESTING') === '1') {
+            this._unsafeModeBefore = global.context.unsafe_mode;
             global.context.unsafe_mode = true;
+        }
 
         this._settings = this.getSettings();
         this._overlay = new Overlay();
@@ -52,6 +54,10 @@ export default class ProjecteurOverlayExtension extends Extension {
         this._overlay?.destroy();
         this._overlay = null;
         this._settings = null;
+        if (this._unsafeModeBefore !== undefined) {   // only what enable() changed, and only in test builds
+            global.context.unsafe_mode = this._unsafeModeBefore;
+            this._unsafeModeBefore = undefined;
+        }
         console.log('projecteur-overlay: disabled');
     }
 

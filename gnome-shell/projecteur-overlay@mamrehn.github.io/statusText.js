@@ -30,7 +30,7 @@ export function describeStatus(status) {
         if (t.state === 'running' || t.state === 'paused')
             label = formatTime(t.remaining);
         else if (t.state === 'finished')
-            label = '0:00';
+            label = formatTime(0);   // the same format as while it runs
     }
     return {connection, battery, firmware, timer, label};
 }

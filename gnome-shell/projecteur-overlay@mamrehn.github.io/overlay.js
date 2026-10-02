@@ -82,6 +82,7 @@ export class Overlay {
         this._cfg = JSON.parse(JSON.stringify(DEFAULTS));
         this._mode = 'highlight';
         this._visible = false;
+        this._applied = {};   // what was last handed to the actors, see _changed()
 
         const primary = Main.layoutManager.primaryMonitor;
         this._x = primary.x + primary.width / 2;
@@ -217,6 +218,18 @@ export class Overlay {
     }
 
     // -- rendering ----------------------------------------------------------------------------
+    /**
+     * True when `value` differs from what was last applied under `key` (and records it). The remote moves an effect
+     * about a hundred times a second; a move only shifts positions, so sizes, styles (CSS is parsed again on every
+     * change) and the lens mask are only touched when they really change.
+     */
+    _changed(key, value) {
+        if (this._applied[key] === value)
+            return false;
+        this._applied[key] = value;
+        return true;
+    }
+
     _sync() {
         const on = this._visible;
         this._dim.visible = on && this._mode === 'highlight';
@@ -235,9 +248,13 @@ export class Overlay {
     _syncHighlight() {
         const m = this._monitor();
         const c = this._cfg.highlight;
-        this._dim.set_position(m.x, m.y);
-        this._dim.set_size(m.width, m.height);
-        this._dim.opacity = Math.round(255 * CAL.dimAlphaPerContrast * c.contrast);
+        if (this._changed('dim', `${m.x},${m.y},${m.width},${m.height}`)) {
+            this._dim.set_position(m.x, m.y);
+            this._dim.set_size(m.width, m.height);
+        }
+        const opacity = Math.round(255 * CAL.dimAlphaPerContrast * c.contrast);
+        if (this._changed('dimOpacity', opacity))
+            this._dim.opacity = opacity;
         this._dimMask.setCircle([this._x - m.x, this._y - m.y], this._diameter(c.size) / 2, [m.width, m.height]);
     }
 
@@ -245,31 +262,35 @@ export class Overlay {
         const c = this._cfg.magnify;
         const d = this._diameter(c.size);
         const z = c.zoom;
-        this._lens.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
-        this._lens.set_size(d, d);
-        // Put the point under the pointer at the centre of the lens.
-        this._clone.set_scale(z, z);
-        this._clone.set_position(d / 2 - this._x * z, d / 2 - this._y * z);
-        this._lensMask.setCircle([d / 2, d / 2], d / 2, [d, d]);
-
-        this._ring.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
-        this._ring.set_size(d, d);
-        this._ring.style = `border: ${CAL.ringWidth}px solid ${c.color}; border-radius: ${d}px;`;
         const o = CAL.ringOutline, od = d + 2 * o;
+        if (this._changed('lens', `${d},${z},${c.color}`)) {
+            this._lens.set_size(d, d);
+            this._clone.set_scale(z, z);
+            this._lensMask.setCircle([d / 2, d / 2], d / 2, [d, d]);   // in the lens' own pixels: moves with it
+            this._ring.set_size(d, d);
+            this._ring.style = `border: ${CAL.ringWidth}px solid ${c.color}; border-radius: ${d}px;`;
+            this._outline.set_size(od, od);
+            this._outline.style = `border: ${o}px solid black; border-radius: ${od}px;`;
+        }
+        const x = Math.round(this._x - d / 2), y = Math.round(this._y - d / 2);
+        this._lens.set_position(x, y);
+        this._ring.set_position(x, y);
+        // Put the point under the pointer at the centre of the lens.
+        this._clone.set_position(d / 2 - this._x * z, d / 2 - this._y * z);
         this._outline.set_position(Math.round(this._x - od / 2), Math.round(this._y - od / 2));
-        this._outline.set_size(od, od);
-        this._outline.style = `border: ${o}px solid black; border-radius: ${od}px;`;
     }
 
     _syncLaser() {
         const c = this._cfg.laser;
         const core = Math.max(4, Math.round(CAL.laserCorePerSize * c.size));
         const d = Math.round(core * CAL.laserGlowFactor);
+        if (this._changed('dot', `${d},${c.color}`)) {
+            this._dot.set_size(d, d);
+            // from the colour at the centre to the same colour, transparent, at the rim (a fixed end colour would tint the edge)
+            this._dot.style = `background-gradient-direction: radial; background-gradient-start: ${c.color}; ` +
+                `background-gradient-end: ${rgba(c.color, 0)}; border-radius: ${d}px;`;
+        }
         this._dot.set_position(Math.round(this._x - d / 2), Math.round(this._y - d / 2));
-        this._dot.set_size(d, d);
-        // from the colour at the centre to the same colour, transparent, at the rim (a fixed end colour would tint the edge)
-        this._dot.style = `background-gradient-direction: radial; background-gradient-start: ${c.color}; ` +
-            `background-gradient-end: ${rgba(c.color, 0)}; border-radius: ${d}px;`;
     }
 
     // -- test support (only reachable when the service exposes it) ------------------------------
